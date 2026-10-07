@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Chapter 5: Safe local subprocesses and authorized SSH/SFTP automation. A practical Python backend and automation lesson with code, deployment context, resilience, and a capstone build step.">
+<title>05 — Safe local subprocesses and authorized SSH/SFTP automation · Python Backend &amp; Automation</title>
+<link rel="icon" href="../assets/course-mark.svg" type="image/svg+xml">
+<script>(()=>{let saved=null;try{saved=localStorage.getItem("app-workshop-theme");}catch{}const theme=saved==="dark"||saved==="light"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;})();</script>
+<link rel="stylesheet" href="../assets/site.css"></head>
+<body data-track="python" data-chapter="python-05"><a class="skip-link" href="#main">Skip to lesson</a>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="../index.html"><img src="../assets/course-mark.svg" alt=""><span>App Builder’s Workshop</span></a><nav class="topnav" aria-label="Main navigation"><a href="../index.html">Python course map</a><button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode: off</button></nav></div></header>
+<div class="reading-progress" aria-hidden="true"><span data-reading-progress></span></div>
+<main id="main" class="layout"><aside class="rail" aria-label="Python lesson navigation"><div class="rail-label">Python · 15 chapters</div>
+<a href="../index.html"><span class="rail-number">⌂</span>Workshop home</a>
+<a href="../index.html"><span class="rail-number">◎</span>Python course map</a>
+<div class="rail-label">Module 1 · Advanced Python Logic &amp; Data Wrangling</div>
+<a href="01-domain-logic.html"><span class="rail-number">01</span>Model the domain before the endpoint</a>
+<a href="02-control-flow-boundaries.html"><span class="rail-number">02</span>Wrangle CSV/JSON safely and cross the repository boundary</a>
+<a href="03-data-wrangling.html"><span class="rail-number">03</span>Make processing transactional, observable, and deployable</a>
+<div class="rail-label">Module 2 · Robust Scripting, Files &amp; Automation</div>
+<a href="04-cli-configuration.html"><span class="rail-number">04</span>Contract-first CLI, configuration, and durable file intake</a>
+<a href="05-durable-file-pipelines.html" aria-current="page"><span class="rail-number">05</span>Safe local subprocesses and authorized SSH/SFTP automation</a>
+<a href="06-remote-automation.html"><span class="rail-number">06</span>Queue boundaries, operational deployment, and production promotion</a>
+<div class="rail-label">Module 3 · Web Scraping, APIs &amp; Browser Automation</div>
+<a href="07-http-api-clients.html"><span class="rail-number">07</span>HTTPX API clients, schemas, pagination, and safe retries</a>
+<a href="08-responsible-scraping.html"><span class="rail-number">08</span>API-first responsible scraping with policy checks and selector parsing</a>
+<a href="09-playwright-automation.html"><span class="rail-number">09</span>Authorized Playwright workflows and production queue boundaries</a>
+<div class="rail-label">Module 4 · Asyncio, Scheduling &amp; Background Queues</div>
+<a href="10-asyncio-concurrency.html"><span class="rail-number">10</span>Async foundations: event loops, cancellation, and backpressure</a>
+<a href="11-celery-scheduling.html"><span class="rail-number">11</span>Choosing a scheduler: cron, in-process jobs, and durable background work</a>
+<a href="12-durable-job-operations.html"><span class="rail-number">12</span>Celery in production: broker, workers, Beat, and reliable task boundaries</a>
+<div class="rail-label">Module 5 · Containers, Linux, Monitoring &amp; Security</div>
+<a href="13-linux-systemd-deployment.html"><span class="rail-number">13</span>Linux foundations and a reliable local service</a>
+<a href="14-docker-cloud-deployment.html"><span class="rail-number">14</span>Containers and the API/PostgreSQL/Redis/worker/Beat layout</a>
+<a href="15-observability-security-launch.html"><span class="rail-number">15</span>VPS production runbook: TLS, observability, security, backups, and release safety</a></aside><div class="main">
+<div class="crumbs"><a href="../index.html">App Builder’s Workshop</a> / <a href="../index.html">Python course</a> / Chapter 05</div>
+<header class="lesson-header"><div class="eyebrow">Python Backend &amp; Automation · Module 2: Robust Scripting, Files &amp; Automation</div><h1>Safe local subprocesses and authorized SSH/SFTP automation</h1><p class="lead">This chapter connects practical Python/backend techniques to the capstone data-intake service. Work through the objectives, run the code locally, and then compare the operational notes before adapting the pattern to production.</p><div class="lesson-meta"><span>Chapter 05 of 15</span><span>Concepts · code · deployment · resilience · build</span></div></header>
+<div class="lesson-tools"><a href="#lesson-content">Jump to lesson</a><a href="#capstone-step">Jump to capstone step</a><span>Use the references at the end to go deeper.</span></div>
+<article id="lesson-content" class="lesson-content backend-lesson"><h3 id="overview-objectives-and-architecture-relevance">Overview, objectives, and architecture relevance</h3>
+<p>Learners will (1) run a fixed local command without shell injection, (2) enforce timeouts and inspect exit status, (3) implement dry-run and redacted logs, (4) use SSH host-key verification and key-based least privilege, and (5) upload to SFTP via a temporary remote name followed by a rename. These patterns matter because automation is an architecture boundary: a worker may control a database migration, converter, backup tool, or remote landing zone. Treat every command, path, host, and credential as policy-controlled input.</p>
+<h3 id="ordered-topics">Ordered topics</h3>
+<ol>
+<li><strong>Prefer argument vectors.</strong> Python recommends <code>subprocess.run()</code> for supported cases; with <code>shell=False</code> (the default), pass a list and avoid interpreting user data as shell syntax <a href="https://docs.python.org/3/library/subprocess.html" target="_blank" rel="noopener noreferrer" title="Python subprocess — Subprocess management">7</a>. Resolve an executable with <code>shutil.which</code>, use a constrained environment, and capture bounded output.</li>
+<li><strong>Timeouts are not cancellation semantics.</strong> <code>run(timeout=...)</code> kills and waits for the child when the wait expires, but process creation itself cannot always be interrupted. Record <code>TimeoutExpired</code>; if a tool forks children, use a process group/job-object strategy and verify cleanup.</li>
+<li><strong>Remote trust.</strong> Paramiko’s default missing-host-key policy rejects unknown keys; load approved system/application known-hosts and do not replace that with <code>AutoAddPolicy</code> in production <a href="https://docs.paramiko.org/en/latest/api/client.html" target="_blank" rel="noopener noreferrer" title="Paramiko SSHClient API">8</a>. Use a dedicated remote account, a restricted key, a fixed command wrapper, and no interactive shell.</li>
+<li><strong>Remote completion.</strong> Read stdout/stderr and call <code>recv_exit_status()</code>. A successful TCP connection or SFTP upload is not proof that the remote processor succeeded. Transfer to <code>.part</code>, verify size (and preferably checksum), then rename to a ready name. Paramiko documents <code>put(..., confirm=True)</code>, <code>settimeout</code>, and <code>posix_rename</code> <a href="https://docs.paramiko.org/en/latest/api/sftp.html" target="_blank" rel="noopener noreferrer" title="Paramiko SFTP API">9</a>.</li>
+</ol>
+<h3 id="near-runnable-deployment-demo-safe_remotepy">Near-runnable deployment demo: <code>safe_remote.py</code></h3>
+<pre><code class="language-python">#!/usr/bin/env python3
+from __future__ import annotations
+import argparse, logging, os, shlex, shutil, subprocess
+from pathlib import Path
+LOG = logging.getLogger(&quot;automation&quot;)
+
+def local(argv: list[str], *, timeout: float, dry_run: bool) -&gt; int:
+    if not argv or shutil.which(argv[0]) is None: raise ValueError(&quot;executable is not allow-listed&quot;)
+    safe = [&quot;&lt;secret&gt;&quot; if &quot;TOKEN&quot; in x.upper() else x for x in argv]
+    if dry_run: LOG.info(&quot;DRY RUN local argv=%s&quot;, safe); return 0
+    try:
+        result = subprocess.run(argv, shell=False, check=False, capture_output=True,
+                                text=True, timeout=timeout, env={&quot;PATH&quot;: os.environ[&quot;PATH&quot;], &quot;LANG&quot;: &quot;C&quot;})
+    except subprocess.TimeoutExpired:
+        LOG.error(&quot;local timeout argv=%s&quot;, safe); return 124
+    # Child output can contain secrets or personal data; keep it out of ordinary logs.
+    LOG.info(&quot;local exit=%d stdout_chars=%d stderr_chars=%d&quot;, result.returncode,
+             len(result.stdout), len(result.stderr))
+    return result.returncode
+
+def upload_and_run(host: str, user: str, key: Path, local_file: Path, remote_dir: str,
+                   *, timeout: float, dry_run: bool) -&gt; int:
+    # pip install paramiko; use only with an authorized host and approved command.
+    import paramiko
+    ready = f&quot;{remote_dir}/{local_file.name}&quot;; part = ready + &quot;.part&quot;
+    if dry_run: LOG.info(&quot;DRY RUN SFTP %s -&gt; %s and fixed remote wrapper&quot;, local_file, ready); return 0
+    ssh = paramiko.SSHClient(); ssh.load_system_host_keys(); ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
+    try:
+        ssh.connect(hostname=host, username=user, key_filename=str(key), timeout=timeout,
+                    banner_timeout=timeout, auth_timeout=timeout, channel_timeout=timeout,
+                    allow_agent=False, look_for_keys=False)
+        sftp = ssh.open_sftp(); sftp.put(str(local_file), part, confirm=True)
+        # Server must grant this account rename permission in remote_dir.
+        sftp.posix_rename(part, ready); sftp.close()
+        command = f&quot;/usr/local/bin/intake-process --path {shlex.quote(ready)}&quot;  # fixed wrapper only
+        stdin, stdout, stderr = ssh.exec_command(command, timeout=timeout, get_pty=False)
+        out, err = stdout.read(), stderr.read(); code = stdout.channel.recv_exit_status()
+        LOG.info(&quot;remote exit=%d stdout=%s stderr=%s&quot;, code, out[-500:], err[-500:])
+        return code
+    finally:
+        ssh.close()
+
+def main() -&gt; int:
+    p = argparse.ArgumentParser(); sub = p.add_subparsers(dest=&quot;mode&quot;, required=True)
+    l = sub.add_parser(&quot;local&quot;); l.add_argument(&quot;argv&quot;, nargs=argparse.REMAINDER); l.add_argument(&quot;--timeout&quot;, type=float, default=30); l.add_argument(&quot;--dry-run&quot;, action=&quot;store_true&quot;)
+    r = sub.add_parser(&quot;sftp&quot;); r.add_argument(&quot;file&quot;, type=Path); r.add_argument(&quot;--host&quot;, required=True); r.add_argument(&quot;--user&quot;, required=True); r.add_argument(&quot;--key&quot;, type=Path, required=True); r.add_argument(&quot;--remote-dir&quot;, required=True); r.add_argument(&quot;--timeout&quot;, type=float, default=30); r.add_argument(&quot;--dry-run&quot;, action=&quot;store_true&quot;)
+    a = p.parse_args(); logging.basicConfig(level=logging.INFO, format=&quot;%(asctime)s %(levelname)s %(message)s&quot;)
+    if a.mode == &quot;local&quot;: return local(a.argv, timeout=a.timeout, dry_run=a.dry_run)
+    return upload_and_run(a.host, a.user, a.key, a.file, a.remote_dir, timeout=a.timeout, dry_run=a.dry_run)
+if __name__ == &quot;__main__&quot;: raise SystemExit(main())
+</code></pre>
+<h3 id="deployment-and-operations-context">Deployment and operations context</h3>
+<p><strong>Development demo:</strong> use a harmless fixed executable such as <code>python --version</code>, a local OpenSSH container or a staging VM, and a test known-hosts file. <strong>Server:</strong> install a wrapper such as <code>/usr/local/bin/intake-process</code> owned by root and executable by <code>intake-worker</code>; give the SSH key only that account and directory. Do not accept arbitrary operator-supplied shell strings. <strong>Cloud:</strong> prefer a provider API/object-storage SDK and short-lived workload identity for cloud resources; use SFTP only when the authorized partner requires it. Put private keys in a secret manager or a narrowly mounted secret file, not in an image or environment dump. Docker Compose notes that secrets can be mounted under <code>/run/secrets/&lt;name&gt;</code> with per-service access, avoiding broad environment exposure <a href="https://docs.docker.com/compose/how-tos/use-secrets/" target="_blank" rel="noopener noreferrer" title="Docker Compose secrets">10</a>.</p>
+<h3 id="failure-logging-retry-idempotency-and-security-notes">Failure, logging, retry, idempotency, and security notes</h3>
+<p>Classify DNS/connect/authentication failures, timeout, non-zero remote exit, checksum mismatch, and permission denial separately. Retry only transient network/server failures, with jitter and a finite budget; never blindly retry authentication or host-key failures. Include remote path, host alias, duration, exit code, and checksum in logs, but redact command arguments and never log private-key contents. A <code>.part</code> file is safe to clean after a lease/age threshold. The same checksum and final name make a transfer replayable; remote processing must itself use an idempotency key. SSH does not make an arbitrary shell command safe: shell quoting reduces one injection path but does not authorize the command or constrain its effects. This course uses API-first, authorized sources only and does not teach bypassing access controls or anti-bot defenses.</p>
+<p><span id="capstone-step"></span></p>
+<h3 id="hands-on-build-step">Hands-on build step</h3>
+<p>Extend the capstone with a <strong>delivery adapter</strong>. In development, run a local normalizer through <code>subprocess.run</code>; in staging, upload the validated archive to a partner SFTP landing directory, wait for the fixed wrapper’s exit status, and record the result alongside the input checksum. Add failure-injection tests for a hung converter, rejected host key, partial upload, remote non-zero exit, and a replay after a timeout.</p><section class="course-references" id="references"><h2>References</h2><ol><li id="ref-7"><a href="https://docs.python.org/3/library/subprocess.html" target="_blank" rel="noopener noreferrer">Python subprocess — Subprocess management</a></li><li id="ref-8"><a href="https://docs.paramiko.org/en/latest/api/client.html" target="_blank" rel="noopener noreferrer">Paramiko SSHClient API</a></li><li id="ref-9"><a href="https://docs.paramiko.org/en/latest/api/sftp.html" target="_blank" rel="noopener noreferrer">Paramiko SFTP API</a></li><li id="ref-10"><a href="https://docs.docker.com/compose/how-tos/use-secrets/" target="_blank" rel="noopener noreferrer">Docker Compose secrets</a></li></ol></section></article>
+<button class="mark-complete" type="button" data-complete aria-pressed="false">Mark this chapter complete</button>
+<nav class="lesson-nav" aria-label="Previous and next lessons"><a href="04-cli-configuration.html"><small>Previous lesson</small><strong>← Contract-first CLI, configuration, and durable file intake</strong></a><a href="06-remote-automation.html"><small>Next lesson</small><strong>Queue boundaries, operational deployment, and production promotion →</strong></a></nav>
+</div></main><footer class="footer"><a href="../index.html">Python Backend &amp; Automation</a> · <a href="../index.html">App Builder’s Workshop</a> · Progress is local to this browser.</footer><script src="../assets/site.js" defer></script></body></html>

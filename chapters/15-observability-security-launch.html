@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Chapter 15: VPS production runbook: TLS, observability, security, backups, and release safety. A practical Python backend and automation lesson with code, deployment context, resilience, and a capstone build step.">
+<title>15 — VPS production runbook: TLS, observability, security, backups, and release safety · Python Backend &amp; Automation</title>
+<link rel="icon" href="../assets/course-mark.svg" type="image/svg+xml">
+<script>(()=>{let saved=null;try{saved=localStorage.getItem("app-workshop-theme");}catch{}const theme=saved==="dark"||saved==="light"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;})();</script>
+<link rel="stylesheet" href="../assets/site.css"></head>
+<body data-track="python" data-chapter="python-15"><a class="skip-link" href="#main">Skip to lesson</a>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="../index.html"><img src="../assets/course-mark.svg" alt=""><span>App Builder’s Workshop</span></a><nav class="topnav" aria-label="Main navigation"><a href="../index.html">Python course map</a><button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode: off</button></nav></div></header>
+<div class="reading-progress" aria-hidden="true"><span data-reading-progress></span></div>
+<main id="main" class="layout"><aside class="rail" aria-label="Python lesson navigation"><div class="rail-label">Python · 15 chapters</div>
+<a href="../index.html"><span class="rail-number">⌂</span>Workshop home</a>
+<a href="../index.html"><span class="rail-number">◎</span>Python course map</a>
+<div class="rail-label">Module 1 · Advanced Python Logic &amp; Data Wrangling</div>
+<a href="01-domain-logic.html"><span class="rail-number">01</span>Model the domain before the endpoint</a>
+<a href="02-control-flow-boundaries.html"><span class="rail-number">02</span>Wrangle CSV/JSON safely and cross the repository boundary</a>
+<a href="03-data-wrangling.html"><span class="rail-number">03</span>Make processing transactional, observable, and deployable</a>
+<div class="rail-label">Module 2 · Robust Scripting, Files &amp; Automation</div>
+<a href="04-cli-configuration.html"><span class="rail-number">04</span>Contract-first CLI, configuration, and durable file intake</a>
+<a href="05-durable-file-pipelines.html"><span class="rail-number">05</span>Safe local subprocesses and authorized SSH/SFTP automation</a>
+<a href="06-remote-automation.html"><span class="rail-number">06</span>Queue boundaries, operational deployment, and production promotion</a>
+<div class="rail-label">Module 3 · Web Scraping, APIs &amp; Browser Automation</div>
+<a href="07-http-api-clients.html"><span class="rail-number">07</span>HTTPX API clients, schemas, pagination, and safe retries</a>
+<a href="08-responsible-scraping.html"><span class="rail-number">08</span>API-first responsible scraping with policy checks and selector parsing</a>
+<a href="09-playwright-automation.html"><span class="rail-number">09</span>Authorized Playwright workflows and production queue boundaries</a>
+<div class="rail-label">Module 4 · Asyncio, Scheduling &amp; Background Queues</div>
+<a href="10-asyncio-concurrency.html"><span class="rail-number">10</span>Async foundations: event loops, cancellation, and backpressure</a>
+<a href="11-celery-scheduling.html"><span class="rail-number">11</span>Choosing a scheduler: cron, in-process jobs, and durable background work</a>
+<a href="12-durable-job-operations.html"><span class="rail-number">12</span>Celery in production: broker, workers, Beat, and reliable task boundaries</a>
+<div class="rail-label">Module 5 · Containers, Linux, Monitoring &amp; Security</div>
+<a href="13-linux-systemd-deployment.html"><span class="rail-number">13</span>Linux foundations and a reliable local service</a>
+<a href="14-docker-cloud-deployment.html"><span class="rail-number">14</span>Containers and the API/PostgreSQL/Redis/worker/Beat layout</a>
+<a href="15-observability-security-launch.html" aria-current="page"><span class="rail-number">15</span>VPS production runbook: TLS, observability, security, backups, and release safety</a></aside><div class="main">
+<div class="crumbs"><a href="../index.html">App Builder’s Workshop</a> / <a href="../index.html">Python course</a> / Chapter 15</div>
+<header class="lesson-header"><div class="eyebrow">Python Backend &amp; Automation · Module 5: Containers, Linux, Monitoring &amp; Security</div><h1>VPS production runbook: TLS, observability, security, backups, and release safety</h1><p class="lead">This chapter connects practical Python/backend techniques to the capstone data-intake service. Work through the objectives, run the code locally, and then compare the operational notes before adapting the pattern to production.</p><div class="lesson-meta"><span>Chapter 15 of 15</span><span>Concepts · code · deployment · resilience · build</span></div></header>
+<div class="lesson-tools"><a href="#lesson-content">Jump to lesson</a><a href="#capstone-step">Jump to capstone step</a><span>Use the references at the end to go deeper.</span></div>
+<article id="lesson-content" class="lesson-content backend-lesson"><h3 id="overview-objectives-and-why-this-matters">Overview, objectives, and why this matters</h3>
+<p>A single VPS is a teachable RDIPS target: Nginx terminates TLS, Compose runs internal services, UFW exposes only SSH/HTTP/HTTPS, and backups leave the machine. It is one failure domain, not high availability.</p>
+<p><strong>Objectives:</strong> configure TLS and least-privilege keys; define health, logs, metrics, and alerts; harden SSH/firewall/secrets/updates; rehearse PostgreSQL restore; use safe migrations and rollback; and select managed components when a VPS is insufficient.</p>
+<h3 id="ordered-production-topics-and-codeconfig-blueprint">Ordered production topics and code/config blueprint</h3>
+<ol>
+<li><strong>Host hardening.</strong> Create an unprivileged deploy user, disable password SSH after testing keys, patch on a schedule, restrict <code>ufw</code> to trusted SSH plus 80/443, and do not publish Postgres or Redis. Ubuntu documents <code>ufw</code> and its status/rule workflow <a href="https://ubuntu.com/server/docs/how-to/security/firewalls/" target="_blank" rel="noopener noreferrer" title="Ubuntu Server — Firewall">13</a>. Keep time synchronized because timers depend on wall-clock behavior <a href="https://man7.org/linux/man-pages/man5/systemd.timer.5.html" target="_blank" rel="noopener noreferrer" title="systemd.timer(5) — timer unit configuration">3</a>.</li>
+<li><strong>Reverse proxy/TLS.</strong> Nginx listens on 80/443 and proxies to <code>127.0.0.1:8000</code>. Its official example specifies certificate paths and TLS 1.2/1.3; private keys need restricted access <a href="https://nginx.org/en/docs/http/configuring_https_servers.html" target="_blank" rel="noopener noreferrer" title="Nginx — Configuring HTTPS servers">14</a>. Automate and test ACME renewal, redirect HTTP, and pass <code>X-Request-ID</code>.</li>
+<li><strong>Observability.</strong> Emit JSON logs to stdout/journald and forward them off-host. Expose Prometheus counters for request latency, queue depth, failures, retries, and backup age; client libraries expose a scrape endpoint <a href="https://prometheus.io/docs/instrumenting/clientlibs/" target="_blank" rel="noopener noreferrer" title="Prometheus — Client libraries">15</a>. Alert on 5xx, readiness, queue age, disk, certificate, backup, and restore failures. Redact both logs and metrics.</li>
+<li><strong>Database safety.</strong> Run Alembic migrations as a release step, not on worker start. Alembic tracks revisions and applies <code>upgrade head</code> <a href="https://alembic.sqlalchemy.org/en/latest/tutorial.html" target="_blank" rel="noopener noreferrer" title="Alembic — Tutorial and migration workflow">16</a>. Prefer expand/contract: add new structures, deploy compatible code, backfill, then enforce constraints and remove old fields.</li>
+<li><strong>Backup/restore.</strong> A nightly encrypted <code>pg_dump -Fc</code> to off-host storage is a baseline; custom dumps restore with <code>pg_restore</code> and are internally consistent snapshots <a href="https://www.postgresql.org/docs/current/backup-dump.html" target="_blank" rel="noopener noreferrer" title="PostgreSQL — SQL dump backup and restore">17</a>. Configure <code>PGSERVICEFILE</code> as a mode-0600 protected service definition so the password is not placed in a command-line argument. Back up recovery material separately. A backup is untrusted until an isolated restore succeeds.</li>
+<li><strong>Release and rollback.</strong> Build an immutable commit-tagged image, test and migrate in staging, back up, deploy, smoke-test, and monitor. Roll back code, not an irreversible data migration; use a compatibility fix or restore/cut over.</li>
+</ol>
+<p><code>/etc/nginx/sites-available/rdips</code> (production-shaped; replace the domain and certificate paths):</p>
+<pre><code class="language-nginx">server { listen 80; server_name intake.example.com; return 301 https://$host$request_uri; }
+server {
+  listen 443 ssl; server_name intake.example.com;
+  ssl_certificate /etc/letsencrypt/live/intake.example.com/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/intake.example.com/privkey.pem;
+  ssl_protocols TLSv1.2 TLSv1.3;
+  client_max_body_size 1m;
+  location / {
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Request-ID $request_id;
+    proxy_pass http://127.0.0.1:8000;
+  }
+}
+</code></pre>
+<p><code>backup.sh</code> (run as a protected systemd service/timer, with a real off-host uploader added):</p>
+<pre><code class="language-bash">#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+stamp=$(date -u +%Y%m%dT%H%M%SZ)
+out=&quot;/var/backups/rdips/rdips-${stamp}.dump&quot;
+mkdir -p &quot;$(dirname &quot;$out&quot;)&quot;
+: &quot;${PGSERVICEFILE:?Set a protected libpq service file before running this job}&quot;
+export PGSERVICEFILE
+PGSERVICE=${PGSERVICE:-rdips-backup}
+pg_dump --format=custom --no-owner --file=&quot;$out&quot; &quot;$PGSERVICE&quot;
+sha256sum &quot;$out&quot; &gt; &quot;$out.sha256&quot;
+# This root-owned wrapper must return success only after both files are stored
+# off-host and the remote checksum is verified. Never pass credentials on argv.
+/usr/local/bin/rdips-backup-upload &quot;$out&quot; &quot;$out.sha256&quot;
+find /var/backups/rdips -type f -mtime +14 -delete
+</code></pre>
+<p><span id="capstone-step"></span></p>
+<h3 id="failure-security-and-hands-on-build">Failure, security, and hands-on build</h3>
+<p>A TLS renewal failure is caught by expiry alerts and a dry-run renewal; disk alerts precede database failure; staging and backups catch bad migrations. A compromised secret triggers revoke/rotate, log review, and redeploy. OWASP recommends least privilege, rotation, revocation, expiry, auditing, encrypted backups, and tested restore <a href="https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html" target="_blank" rel="noopener noreferrer" title="OWASP — Secrets Management Cheat Sheet">18</a>. Never put secrets in Git, image layers, URLs, exception text, or metric labels.</p>
+<p><strong>Hands-on build:</strong> provision an Ubuntu VPS; install Docker, Nginx, UFW, and ACME; deploy Compose under systemd; add <code>backup.service</code>/<code>backup.timer</code>; scrape <code>/metrics</code>; trigger a failed task and alert; restore into disposable PostgreSQL; and roll back a tagged image. Finish a runbook with owner, RPO/RTO, restore date, alert actions, and rollback commands.</p>
+<p>Managed PostgreSQL supplies backups/patching; managed Redis/queues remove broker operations; container platforms handle rollout/replacement; Lambda plus SQS/Cloud Tasks suits short, bursty handlers but still needs idempotency and dead letters. The VPS exposes failure modes before managed abstractions hide them.</p><section class="course-references" id="references"><h2>References</h2><ol><li id="ref-3"><a href="https://man7.org/linux/man-pages/man5/systemd.timer.5.html" target="_blank" rel="noopener noreferrer">systemd.timer(5) — timer unit configuration</a></li><li id="ref-13"><a href="https://ubuntu.com/server/docs/how-to/security/firewalls/" target="_blank" rel="noopener noreferrer">Ubuntu Server — Firewall</a></li><li id="ref-14"><a href="https://nginx.org/en/docs/http/configuring_https_servers.html" target="_blank" rel="noopener noreferrer">Nginx — Configuring HTTPS servers</a></li><li id="ref-15"><a href="https://prometheus.io/docs/instrumenting/clientlibs/" target="_blank" rel="noopener noreferrer">Prometheus — Client libraries</a></li><li id="ref-16"><a href="https://alembic.sqlalchemy.org/en/latest/tutorial.html" target="_blank" rel="noopener noreferrer">Alembic — Tutorial and migration workflow</a></li><li id="ref-17"><a href="https://www.postgresql.org/docs/current/backup-dump.html" target="_blank" rel="noopener noreferrer">PostgreSQL — SQL dump backup and restore</a></li><li id="ref-18"><a href="https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html" target="_blank" rel="noopener noreferrer">OWASP — Secrets Management Cheat Sheet</a></li></ol></section></article>
+<button class="mark-complete" type="button" data-complete aria-pressed="false">Mark this chapter complete</button>
+<nav class="lesson-nav" aria-label="Previous and next lessons"><a href="14-docker-cloud-deployment.html"><small>Previous lesson</small><strong>← Containers and the API/PostgreSQL/Redis/worker/Beat layout</strong></a><a href="../index.html#capstone"><small>Finish the Python course</small><strong>Return to the capstone map →</strong></a></nav>
+</div></main><footer class="footer"><a href="../index.html">Python Backend &amp; Automation</a> · <a href="../index.html">App Builder’s Workshop</a> · Progress is local to this browser.</footer><script src="../assets/site.js" defer></script></body></html>

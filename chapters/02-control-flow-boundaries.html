@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Chapter 2: Wrangle CSV/JSON safely and cross the repository boundary. A practical Python backend and automation lesson with code, deployment context, resilience, and a capstone build step.">
+<title>02 — Wrangle CSV/JSON safely and cross the repository boundary · Python Backend &amp; Automation</title>
+<link rel="icon" href="../assets/course-mark.svg" type="image/svg+xml">
+<script>(()=>{let saved=null;try{saved=localStorage.getItem("app-workshop-theme");}catch{}const theme=saved==="dark"||saved==="light"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;})();</script>
+<link rel="stylesheet" href="../assets/site.css"></head>
+<body data-track="python" data-chapter="python-02"><a class="skip-link" href="#main">Skip to lesson</a>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="../index.html"><img src="../assets/course-mark.svg" alt=""><span>App Builder’s Workshop</span></a><nav class="topnav" aria-label="Main navigation"><a href="../index.html">Python course map</a><button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode: off</button></nav></div></header>
+<div class="reading-progress" aria-hidden="true"><span data-reading-progress></span></div>
+<main id="main" class="layout"><aside class="rail" aria-label="Python lesson navigation"><div class="rail-label">Python · 15 chapters</div>
+<a href="../index.html"><span class="rail-number">⌂</span>Workshop home</a>
+<a href="../index.html"><span class="rail-number">◎</span>Python course map</a>
+<div class="rail-label">Module 1 · Advanced Python Logic &amp; Data Wrangling</div>
+<a href="01-domain-logic.html"><span class="rail-number">01</span>Model the domain before the endpoint</a>
+<a href="02-control-flow-boundaries.html" aria-current="page"><span class="rail-number">02</span>Wrangle CSV/JSON safely and cross the repository boundary</a>
+<a href="03-data-wrangling.html"><span class="rail-number">03</span>Make processing transactional, observable, and deployable</a>
+<div class="rail-label">Module 2 · Robust Scripting, Files &amp; Automation</div>
+<a href="04-cli-configuration.html"><span class="rail-number">04</span>Contract-first CLI, configuration, and durable file intake</a>
+<a href="05-durable-file-pipelines.html"><span class="rail-number">05</span>Safe local subprocesses and authorized SSH/SFTP automation</a>
+<a href="06-remote-automation.html"><span class="rail-number">06</span>Queue boundaries, operational deployment, and production promotion</a>
+<div class="rail-label">Module 3 · Web Scraping, APIs &amp; Browser Automation</div>
+<a href="07-http-api-clients.html"><span class="rail-number">07</span>HTTPX API clients, schemas, pagination, and safe retries</a>
+<a href="08-responsible-scraping.html"><span class="rail-number">08</span>API-first responsible scraping with policy checks and selector parsing</a>
+<a href="09-playwright-automation.html"><span class="rail-number">09</span>Authorized Playwright workflows and production queue boundaries</a>
+<div class="rail-label">Module 4 · Asyncio, Scheduling &amp; Background Queues</div>
+<a href="10-asyncio-concurrency.html"><span class="rail-number">10</span>Async foundations: event loops, cancellation, and backpressure</a>
+<a href="11-celery-scheduling.html"><span class="rail-number">11</span>Choosing a scheduler: cron, in-process jobs, and durable background work</a>
+<a href="12-durable-job-operations.html"><span class="rail-number">12</span>Celery in production: broker, workers, Beat, and reliable task boundaries</a>
+<div class="rail-label">Module 5 · Containers, Linux, Monitoring &amp; Security</div>
+<a href="13-linux-systemd-deployment.html"><span class="rail-number">13</span>Linux foundations and a reliable local service</a>
+<a href="14-docker-cloud-deployment.html"><span class="rail-number">14</span>Containers and the API/PostgreSQL/Redis/worker/Beat layout</a>
+<a href="15-observability-security-launch.html"><span class="rail-number">15</span>VPS production runbook: TLS, observability, security, backups, and release safety</a></aside><div class="main">
+<div class="crumbs"><a href="../index.html">App Builder’s Workshop</a> / <a href="../index.html">Python course</a> / Chapter 02</div>
+<header class="lesson-header"><div class="eyebrow">Python Backend &amp; Automation · Module 1: Advanced Python Logic &amp; Data Wrangling</div><h1>Wrangle CSV/JSON safely and cross the repository boundary</h1><p class="lead">This chapter connects practical Python/backend techniques to the capstone data-intake service. Work through the objectives, run the code locally, and then compare the operational notes before adapting the pattern to production.</p><div class="lesson-meta"><span>Chapter 02 of 15</span><span>Concepts · code · deployment · resilience · build</span></div></header>
+<div class="lesson-tools"><a href="#lesson-content">Jump to lesson</a><a href="#capstone-step">Jump to capstone step</a><span>Use the references at the end to go deeper.</span></div>
+<article id="lesson-content" class="lesson-content backend-lesson"><h3 id="21-overview-objectives-and-architectural-reason">2.1 Overview, objectives, and architectural reason</h3>
+<p>Learners will: (1) process files as bounded iterators; (2) parse CSV/JSON with explicit encoding and limits; (3) preserve money with <code>Decimal</code> and aware UTC datetimes; (4) quarantine bad rows; and (5) persist normalized events through a repository. Every file, feed, and queue message is external input, even on an internal network.</p>
+<p>Python’s CSV reader expects files opened with <code>newline=''</code> and returns strings without automatic conversion <a href="https://docs.python.org/3/library/csv.html" target="_blank" rel="noopener noreferrer" title="Python csv — CSV File Reading and Writing">7</a>. JSON parsing can consume considerable CPU and memory for a maliciously large string, so size limits are an application responsibility <a href="https://docs.python.org/3/library/json.html" target="_blank" rel="noopener noreferrer" title="Python json — JSON encoder and decoder">8</a>. <code>Decimal</code> represents values such as <code>1.1</code> exactly and is preferred for strict accounting equality <a href="https://docs.python.org/3/library/decimal.html" target="_blank" rel="noopener noreferrer" title="Python decimal — Decimal fixed-point and floating-point arithmetic">9</a>. A naive datetime cannot unambiguously locate an instant; use timezone-aware values and normalize to UTC <a href="https://docs.python.org/3/library/datetime.html" target="_blank" rel="noopener noreferrer" title="Python datetime — Basic date and time types">10</a>.</p>
+<h3 id="22-ordered-topics">2.2 Ordered topics</h3>
+<ol>
+<li><strong>Source adapters.</strong> Make a CSV adapter and JSON adapter that both yield <code>dict[str, object]</code>. The service consumes an iterator, so it can apply backpressure or batch commits later.</li>
+<li><strong>Canonical conversion.</strong> Parse money from text, reject non-finite values, quantize to cents at the domain boundary, and convert timestamps to UTC. Never use binary float for a monetary invariant.</li>
+<li><strong>Validation and quarantine.</strong> Record source name and row number in a quarantine stream. Continue only when the product contract says bad rows should not poison the complete file; otherwise fail the batch and make the caller repair it.</li>
+<li><strong>Repository contract.</strong> The repository accepts <code>IntakeEvent</code>, not raw dictionaries. SQL uses placeholders; Python’s <code>sqlite3</code> documentation explicitly warns to bind values rather than format SQL strings <a href="https://docs.python.org/3/library/sqlite3.html" target="_blank" rel="noopener noreferrer" title="Python sqlite3 — DB-API 2.0 interface for SQLite databases">11</a>.</li>
+<li><strong>Development demo versus production.</strong> Local SQLite is a teaching and single-process path. Production PostgreSQL should store a unique event key and use <code>INSERT ... ON CONFLICT</code>; this gives atomic insert-or-update, not global exactly-once processing <a href="https://www.postgresql.org/docs/current/sql-insert.html" target="_blank" rel="noopener noreferrer" title="PostgreSQL INSERT and ON CONFLICT">12</a>.</li>
+</ol>
+<h3 id="23-code-blueprint-wranglingpy-and-repositorypy">2.3 Code blueprint: <code>wrangling.py</code> and <code>repository.py</code></h3>
+<pre><code class="language-python"># wrangling.py — streaming adapters plus normalization
+import csv, json
+from collections.abc import Iterator
+from datetime import datetime, timezone
+from decimal import Decimal
+from pathlib import Path
+from typing import Any
+from pydantic import ValidationError
+from app import IntakeRequest
+from domain import DomainError, IntakeEvent
+
+MAX_INPUT_BYTES = 5 * 1024 * 1024  # product limit; tune and test it
+
+def iter_records(path: Path) -&gt; Iterator[dict[str, Any]]:
+    if path.stat().st_size &gt; MAX_INPUT_BYTES:
+        raise ValueError(&quot;input exceeds configured size limit&quot;)
+    if path.suffix.lower() == &quot;.csv&quot;:
+        with path.open(&quot;r&quot;, encoding=&quot;utf-8&quot;, newline=&quot;&quot;) as handle:
+            reader = csv.DictReader(handle)
+            for row in reader:
+                yield dict(row)
+    elif path.suffix.lower() == &quot;.json&quot;:
+        # The size check above bounds the whole decode. For larger files use
+        # a streaming JSON format/parser chosen and reviewed for the workload.
+        with path.open(&quot;r&quot;, encoding=&quot;utf-8&quot;) as handle:
+            document = json.load(handle)
+        if not isinstance(document, list):
+            raise ValueError(&quot;JSON intake must be an array of objects&quot;)
+        for row in document:
+            if not isinstance(row, dict):
+                raise ValueError(&quot;each JSON item must be an object&quot;)
+            yield row
+    else:
+        raise ValueError(&quot;only .csv and .json are accepted&quot;)
+
+def normalize(raw: dict[str, Any]) -&gt; IntakeEvent:
+    # Pydantic performs boundary parsing; the dataclass repeats invariants so
+    # non-HTTP callers cannot bypass them.
+    try:
+        request = IntakeRequest.model_validate(raw)
+        return IntakeEvent(**request.model_dump())
+    except (ValidationError, DomainError) as exc:
+        raise ValueError(f&quot;invalid intake record: {exc}&quot;) from exc
+</code></pre>
+<pre><code class="language-python"># repository.py — local durable demo; one connection per process/thread policy.
+import sqlite3
+from pathlib import Path
+from domain import IntakeEvent
+
+SCHEMA = &quot;&quot;&quot;
+CREATE TABLE IF NOT EXISTS intake_events (
+  event_id TEXT PRIMARY KEY,
+  customer_id TEXT NOT NULL,
+  amount TEXT NOT NULL,
+  occurred_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+&quot;&quot;&quot;
+
+class SQLiteRepository:
+    def __init__(self, database: Path) -&gt; None:
+        self.connection = sqlite3.connect(database, timeout=10)
+        self.connection.execute(SCHEMA)
+        self.connection.commit()
+
+    def upsert(self, event: IntakeEvent) -&gt; None:
+        with self.connection:  # commits or rolls back the transaction
+            self.connection.execute(
+                &quot;&quot;&quot;INSERT INTO intake_events
+                   (event_id, customer_id, amount, occurred_at)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(event_id) DO UPDATE SET
+                     customer_id=excluded.customer_id,
+                     amount=excluded.amount,
+                     occurred_at=excluded.occurred_at,
+                     updated_at=CURRENT_TIMESTAMP&quot;&quot;&quot;,
+                (event.event_id, event.customer_id, str(event.amount),
+                 event.occurred_at_utc.isoformat()),
+            )
+
+    def close(self) -&gt; None:
+        self.connection.close()
+</code></pre>
+<h3 id="24-local-server-and-cloud-operations-context">2.4 Local, server, and cloud operations context</h3>
+<p>Run a local CLI that opens <code>SQLiteRepository("rdi.db")</code>, iterates, normalizes, and upserts. Keep SQLite on a persistent local volume, not a shared filesystem; archive the source only after recording the batch outcome. Containers may mount SQLite for development, but production containers should be stateless and use PostgreSQL.</p>
+<p>For the realistic production path, upload an authorized file to object storage, publish an intake-job message to a managed queue, and have workers read the object, validate rows, and write PostgreSQL in transactions. Standard queues such as Amazon SQS document at-least-once delivery and instruct consumers to be idempotent <a href="https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/standard-queues-at-least-once-delivery.html" target="_blank" rel="noopener noreferrer" title="Amazon SQS at-least-once delivery">14</a>. A queue is useful for backpressure and retries, but it does not make downstream side effects exactly once.</p>
+<h3 id="25-failure-logging-retry-idempotency-and-security-notes">2.5 Failure, logging, retry, idempotency, and security notes</h3>
+<p>Handle decoding, CSV/JSON, validation, and database errors separately. Log source, row, error class, and a redacted key. Quarantine bad rows; never execute URLs, shell commands, or serialized objects from a file. Enforce size, row/field, extension, and authorization limits; use parameterized SQL. Retry only transient errors with bounded backoff. Choose and document whether same-key/different-payload replays conflict or update; silent overwrite is dangerous for financial data.</p>
+<p><span id="capstone-step"></span></p>
+<h3 id="26-hands-on-build-step">2.6 Hands-on build step</h3>
+<p>Add <code>python -m rdi_import sample.csv --db rdi.db</code>, producing quarantine JSON Lines with row, source, category, and a redacted message. Import twice and assert the row count is unchanged. This <strong>local demo</strong> turns Chapter 1’s contract into a repeatable pipeline.</p><section class="course-references" id="references"><h2>References</h2><ol><li id="ref-7"><a href="https://docs.python.org/3/library/csv.html" target="_blank" rel="noopener noreferrer">Python csv — CSV File Reading and Writing</a></li><li id="ref-8"><a href="https://docs.python.org/3/library/json.html" target="_blank" rel="noopener noreferrer">Python json — JSON encoder and decoder</a></li><li id="ref-9"><a href="https://docs.python.org/3/library/decimal.html" target="_blank" rel="noopener noreferrer">Python decimal — Decimal fixed-point and floating-point arithmetic</a></li><li id="ref-10"><a href="https://docs.python.org/3/library/datetime.html" target="_blank" rel="noopener noreferrer">Python datetime — Basic date and time types</a></li><li id="ref-11"><a href="https://docs.python.org/3/library/sqlite3.html" target="_blank" rel="noopener noreferrer">Python sqlite3 — DB-API 2.0 interface for SQLite databases</a></li><li id="ref-12"><a href="https://www.postgresql.org/docs/current/transaction-iso.html" target="_blank" rel="noopener noreferrer">PostgreSQL Transaction Isolation</a></li><li id="ref-13"><a href="https://www.postgresql.org/docs/current/sql-insert.html" target="_blank" rel="noopener noreferrer">PostgreSQL INSERT and ON CONFLICT</a></li><li id="ref-14"><a href="https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/standard-queues-at-least-once-delivery.html" target="_blank" rel="noopener noreferrer">Amazon SQS at-least-once delivery</a></li></ol></section></article>
+<button class="mark-complete" type="button" data-complete aria-pressed="false">Mark this chapter complete</button>
+<nav class="lesson-nav" aria-label="Previous and next lessons"><a href="01-domain-logic.html"><small>Previous lesson</small><strong>← Model the domain before the endpoint</strong></a><a href="03-data-wrangling.html"><small>Next lesson</small><strong>Make processing transactional, observable, and deployable →</strong></a></nav>
+</div></main><footer class="footer"><a href="../index.html">Python Backend &amp; Automation</a> · <a href="../index.html">App Builder’s Workshop</a> · Progress is local to this browser.</footer><script src="../assets/site.js" defer></script></body></html>

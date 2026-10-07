@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Chapter 9: Authorized Playwright workflows and production queue boundaries. A practical Python backend and automation lesson with code, deployment context, resilience, and a capstone build step.">
+<title>09 — Authorized Playwright workflows and production queue boundaries · Python Backend &amp; Automation</title>
+<link rel="icon" href="../assets/course-mark.svg" type="image/svg+xml">
+<script>(()=>{let saved=null;try{saved=localStorage.getItem("app-workshop-theme");}catch{}const theme=saved==="dark"||saved==="light"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;})();</script>
+<link rel="stylesheet" href="../assets/site.css"></head>
+<body data-track="python" data-chapter="python-09"><a class="skip-link" href="#main">Skip to lesson</a>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="../index.html"><img src="../assets/course-mark.svg" alt=""><span>App Builder’s Workshop</span></a><nav class="topnav" aria-label="Main navigation"><a href="../index.html">Python course map</a><button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode: off</button></nav></div></header>
+<div class="reading-progress" aria-hidden="true"><span data-reading-progress></span></div>
+<main id="main" class="layout"><aside class="rail" aria-label="Python lesson navigation"><div class="rail-label">Python · 15 chapters</div>
+<a href="../index.html"><span class="rail-number">⌂</span>Workshop home</a>
+<a href="../index.html"><span class="rail-number">◎</span>Python course map</a>
+<div class="rail-label">Module 1 · Advanced Python Logic &amp; Data Wrangling</div>
+<a href="01-domain-logic.html"><span class="rail-number">01</span>Model the domain before the endpoint</a>
+<a href="02-control-flow-boundaries.html"><span class="rail-number">02</span>Wrangle CSV/JSON safely and cross the repository boundary</a>
+<a href="03-data-wrangling.html"><span class="rail-number">03</span>Make processing transactional, observable, and deployable</a>
+<div class="rail-label">Module 2 · Robust Scripting, Files &amp; Automation</div>
+<a href="04-cli-configuration.html"><span class="rail-number">04</span>Contract-first CLI, configuration, and durable file intake</a>
+<a href="05-durable-file-pipelines.html"><span class="rail-number">05</span>Safe local subprocesses and authorized SSH/SFTP automation</a>
+<a href="06-remote-automation.html"><span class="rail-number">06</span>Queue boundaries, operational deployment, and production promotion</a>
+<div class="rail-label">Module 3 · Web Scraping, APIs &amp; Browser Automation</div>
+<a href="07-http-api-clients.html"><span class="rail-number">07</span>HTTPX API clients, schemas, pagination, and safe retries</a>
+<a href="08-responsible-scraping.html"><span class="rail-number">08</span>API-first responsible scraping with policy checks and selector parsing</a>
+<a href="09-playwright-automation.html" aria-current="page"><span class="rail-number">09</span>Authorized Playwright workflows and production queue boundaries</a>
+<div class="rail-label">Module 4 · Asyncio, Scheduling &amp; Background Queues</div>
+<a href="10-asyncio-concurrency.html"><span class="rail-number">10</span>Async foundations: event loops, cancellation, and backpressure</a>
+<a href="11-celery-scheduling.html"><span class="rail-number">11</span>Choosing a scheduler: cron, in-process jobs, and durable background work</a>
+<a href="12-durable-job-operations.html"><span class="rail-number">12</span>Celery in production: broker, workers, Beat, and reliable task boundaries</a>
+<div class="rail-label">Module 5 · Containers, Linux, Monitoring &amp; Security</div>
+<a href="13-linux-systemd-deployment.html"><span class="rail-number">13</span>Linux foundations and a reliable local service</a>
+<a href="14-docker-cloud-deployment.html"><span class="rail-number">14</span>Containers and the API/PostgreSQL/Redis/worker/Beat layout</a>
+<a href="15-observability-security-launch.html"><span class="rail-number">15</span>VPS production runbook: TLS, observability, security, backups, and release safety</a></aside><div class="main">
+<div class="crumbs"><a href="../index.html">App Builder’s Workshop</a> / <a href="../index.html">Python course</a> / Chapter 09</div>
+<header class="lesson-header"><div class="eyebrow">Python Backend &amp; Automation · Module 3: Web Scraping, APIs &amp; Browser Automation</div><h1>Authorized Playwright workflows and production queue boundaries</h1><p class="lead">This chapter connects practical Python/backend techniques to the capstone data-intake service. Work through the objectives, run the code locally, and then compare the operational notes before adapting the pattern to production.</p><div class="lesson-meta"><span>Chapter 09 of 15</span><span>Concepts · code · deployment · resilience · build</span></div></header>
+<div class="lesson-tools"><a href="#lesson-content">Jump to lesson</a><a href="#capstone-step">Jump to capstone step</a><span>Use the references at the end to go deeper.</span></div>
+<article id="lesson-content" class="lesson-content backend-lesson"><h3 id="overview-objectives-and-architecture-value">Overview, objectives, and architecture value</h3>
+<p>A real browser is justified only when a permitted user-owned or public workflow requires JavaScript rendering, a documented interaction, or browser-specific behavior that an HTTP client cannot reproduce. Playwright supports Chromium, Firefox, and WebKit and Python sync/async APIs. <a href="https://playwright.dev/python/docs/intro" target="_blank" rel="noopener noreferrer" title="Playwright Python Installation">7</a> Browser contexts are isolated, non-persistent sessions that do not write browsing data to disk by default; closing a context closes its pages. <a href="https://playwright.dev/python/docs/api/class-browsercontext" target="_blank" rel="noopener noreferrer" title="Playwright BrowserContext">8</a></p>
+<p>Learners will (1) define an authorization boundary and allowed origin; (2) use a short-lived, isolated context; (3) set navigation/action timeouts and avoid persistent profiles; (4) extract a small, validated result; (5) run browser work outside the web request process; and (6) design queue retries and deduplication without claiming exactly-once delivery.</p>
+<p>This matters in server architecture because browsers are memory-heavy, failure-prone processes. A web API worker must remain responsive while a queue worker owns browser lifecycle, concurrency, artifacts, and timeouts. Celery describes a task queue as messages delivered through a broker to dedicated workers; its docs also recommend idempotent task functions and explain that late acknowledgements can cause multiple execution after a crash. <a href="https://docs.celeryq.dev/en/stable/userguide/tasks.html" target="_blank" rel="noopener noreferrer" title="Celery Tasks, Acknowledgements, and Idempotency">11</a></p>
+<h3 id="ordered-topics">Ordered topics</h3>
+<ol>
+<li><strong>Permission gate.</strong> Obtain written authorization or document that the workflow is public and permitted. No login automation unless the owner explicitly provides and authorizes the account. Never bypass CAPTCHA, anti-bot, access controls, paywalls, or rate limits.</li>
+<li><strong>Browser isolation.</strong> Launch a managed browser, create a fresh non-persistent context per job, block downloads/popups unless required, and close page/context/browser in <code>finally</code> blocks.</li>
+<li><strong>Navigation safety.</strong> Allowlist exact origins, reject credentials in URLs, enforce a navigation timeout, inspect the final URL, and stop on unexpected redirects. Network egress policy remains necessary; browser URL validation alone is not an SSRF defense.</li>
+<li><strong>Selectors and waits.</strong> Prefer role/text/label locators or stable <code>data-*</code> attributes. Wait for a specific locator, not an arbitrary long sleep. Capture a small diagnostic screenshot only on an authorized test/staging environment and protect it as potentially sensitive.</li>
+<li><strong>Queue boundary.</strong> API request creates a run and enqueues a job. Worker fetches, validates, commits, and records status. Use a durable broker and PostgreSQL in production; SQLite/mock execution remains the local learning path.</li>
+<li><strong>Retry policy.</strong> Retry a browser crash or transient upstream timeout with a cap and jitter. Do not retry a policy/access denial or selector drift. Use a deterministic run key and database uniqueness. A broker can redeliver; a worker can die after side effects; design for at-least-once execution plus deduplication.</li>
+</ol>
+<h3 id="code-blueprint-browser_intakepy-near-runnable-local-demo">Code blueprint: <code>browser_intake.py</code> (near-runnable local demo)</h3>
+<p>Install <code>pip install playwright pydantic</code> and then run <code>playwright install</code> as documented by Playwright. <a href="https://playwright.dev/python/docs/intro" target="_blank" rel="noopener noreferrer" title="Playwright Python Installation">7</a> Set <code>ALLOWED_ORIGINS=https://public.example.test</code>, <code>TARGET_URL</code>, and use a public/staging page that you own or are authorized to test. The <code>run_browser_job</code> function is the unit to call from a queue worker; the <code>__main__</code> path is local-only.</p>
+<pre><code class="language-python">from __future__ import annotations
+
+import hashlib
+import logging
+import os
+import sqlite3
+from urllib.parse import urlparse
+
+from pydantic import BaseModel, Field
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
+
+log = logging.getLogger(&quot;browser_intake&quot;)
+logging.basicConfig(level=os.getenv(&quot;LOG_LEVEL&quot;, &quot;INFO&quot;))
+DB_PATH = os.getenv(&quot;SQLITE_PATH&quot;, &quot;intake.db&quot;)
+ALLOWED_ORIGINS = {x.strip().lower() for x in os.environ[&quot;ALLOWED_ORIGINS&quot;].split(&quot;,&quot;)}
+TARGET_URL = os.environ[&quot;TARGET_URL&quot;]
+
+class BrowserRecord(BaseModel):
+    external_id: str = Field(min_length=1, max_length=200)
+    title: str = Field(min_length=1, max_length=500)
+
+def allowed_origin(url: str) -&gt; bool:
+    p = urlparse(url)
+    origin = f&quot;{p.scheme}://{p.netloc}&quot;.lower()
+    return p.scheme == &quot;https&quot; and not p.username and not p.password and origin in ALLOWED_ORIGINS
+
+def persist(record: BrowserRecord, run_id: str) -&gt; None:
+    key = hashlib.sha256(f&quot;browser:{record.external_id}&quot;.encode()).hexdigest()
+    with sqlite3.connect(DB_PATH) as db:
+        db.execute(&quot;&quot;&quot;CREATE TABLE IF NOT EXISTS records (
+          source TEXT, external_id TEXT, payload TEXT, intake_key TEXT UNIQUE,
+          run_id TEXT, PRIMARY KEY(source, external_id))&quot;&quot;&quot;)
+        db.execute(&quot;&quot;&quot;INSERT INTO records VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(source, external_id) DO UPDATE SET payload=excluded.payload,
+          run_id=excluded.run_id&quot;&quot;&quot;, (&quot;browser&quot;, record.external_id,
+          record.model_dump_json(), key, run_id))
+
+def run_browser_job(run_id: str, url: str) -&gt; int:
+    if not allowed_origin(url):
+        raise PermissionError(&quot;browser URL is outside the reviewed origin allowlist&quot;)
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        context = browser.new_context(accept_downloads=False)
+        context.set_default_timeout(8_000)
+        page = context.new_page()
+        try:
+            response = page.goto(url, wait_until=&quot;domcontentloaded&quot;, timeout=15_000)
+            if response is None or response.status &gt;= 400:
+                raise RuntimeError(f&quot;navigation failed status={response.status if response else 'none'}&quot;)
+            final_url = page.url
+            if not allowed_origin(final_url):
+                raise PermissionError(&quot;unexpected redirect outside allowed origin&quot;)
+            title = page.locator(&quot;[data-testid='record-title']&quot;).inner_text()
+            external_id = page.locator(&quot;[data-testid='record-id']&quot;).inner_text()
+            record = BrowserRecord(external_id=external_id.strip(), title=title.strip())
+            persist(record, run_id)
+            log.info(&quot;run_id=%s browser_record_saved source=browser&quot;, run_id)
+            return 1
+        except PlaywrightTimeout:
+            log.exception(&quot;run_id=%s browser timeout&quot;, run_id)
+            raise
+        finally:
+            context.close()
+            browser.close()
+
+if __name__ == &quot;__main__&quot;:
+    run_browser_job(os.getenv(&quot;RUN_ID&quot;, &quot;local-demo&quot;), TARGET_URL)
+</code></pre>
+<h3 id="deployment-and-operations-context">Deployment and operations context</h3>
+<p><strong>Development demo:</strong> run one browser job against a local mock page or owned staging app. Do not put real user cookies in the repository. <strong>Server:</strong> package browser binaries in the image, run a separate worker with a low concurrency, CPU/memory limits, and a hard job deadline. Expose only a small FastAPI <code>POST /runs</code> that validates the source and returns a run ID; it should not hold the HTTP connection open for navigation. <strong>Cloud:</strong> use a managed queue/broker (for example Redis or RabbitMQ where supported), PostgreSQL for run/record state, object storage only for explicitly approved diagnostics, and network egress controls. A container orchestrator generally runs one Uvicorn process per container and scales replicas; FastAPI’s deployment guidance contrasts that with multiple local workers. <a href="https://fastapi.tiangolo.com/deployment/server-workers/" target="_blank" rel="noopener noreferrer" title="FastAPI Server Workers">13</a></p>
+<p>Operational signals include queue depth, job age, browser launch failures, navigation latency, memory per job, timeout count, selector drift, and duplicate suppression. Correlate every browser job with <code>run_id</code>; redact URLs if query strings can contain personal data. Never print cookies, authorization headers, page text, or screenshots by default. Rotate any authorized test credential and grant the minimum role.</p>
+<p><span id="capstone-step"></span></p>
+<p><strong>Hands-on build step (capstone step 3):</strong> add the browser adapter behind the same <code>SourceAdapter</code> interface. Implement <code>POST /runs</code> to insert a run with a unique idempotency key and enqueue <code>{run_id, source, url}</code>; the worker calls the adapter, validates records, upserts them, and marks the run <code>succeeded</code>, <code>quarantined</code>, or <code>retrying</code>. In local mode, call <code>run_browser_job</code> directly and use SQLite/mock pages. In production, use PostgreSQL transactions plus an outbox or queue publisher so a committed run is not silently lost before enqueueing; use a queue worker with bounded retries and a dead-letter path. Document that the system achieves durable state plus repeat-safe writes, while network calls, queue delivery, process crashes, and provider behavior mean exactly-once delivery is not asserted.</p><section class="course-references" id="references"><h2>References</h2><ol><li id="ref-7"><a href="https://playwright.dev/python/docs/intro" target="_blank" rel="noopener noreferrer">Playwright Python Installation</a></li><li id="ref-8"><a href="https://playwright.dev/python/docs/api/class-browsercontext" target="_blank" rel="noopener noreferrer">Playwright BrowserContext</a></li><li id="ref-11"><a href="https://docs.celeryq.dev/en/stable/getting-started/introduction.html" target="_blank" rel="noopener noreferrer">Celery Introduction and Task Queues</a></li><li id="ref-12"><a href="https://docs.celeryq.dev/en/stable/userguide/tasks.html" target="_blank" rel="noopener noreferrer">Celery Tasks, Acknowledgements, and Idempotency</a></li><li id="ref-13"><a href="https://fastapi.tiangolo.com/deployment/server-workers/" target="_blank" rel="noopener noreferrer">FastAPI Server Workers</a></li></ol></section></article>
+<button class="mark-complete" type="button" data-complete aria-pressed="false">Mark this chapter complete</button>
+<nav class="lesson-nav" aria-label="Previous and next lessons"><a href="08-responsible-scraping.html"><small>Previous lesson</small><strong>← API-first responsible scraping with policy checks and selector parsing</strong></a><a href="10-asyncio-concurrency.html"><small>Next lesson</small><strong>Async foundations: event loops, cancellation, and backpressure →</strong></a></nav>
+</div></main><footer class="footer"><a href="../index.html">Python Backend &amp; Automation</a> · <a href="../index.html">App Builder’s Workshop</a> · Progress is local to this browser.</footer><script src="../assets/site.js" defer></script></body></html>

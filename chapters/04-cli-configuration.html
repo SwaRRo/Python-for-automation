@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Chapter 4: Contract-first CLI, configuration, and durable file intake. A practical Python backend and automation lesson with code, deployment context, resilience, and a capstone build step.">
+<title>04 — Contract-first CLI, configuration, and durable file intake · Python Backend &amp; Automation</title>
+<link rel="icon" href="../assets/course-mark.svg" type="image/svg+xml">
+<script>(()=>{let saved=null;try{saved=localStorage.getItem("app-workshop-theme");}catch{}const theme=saved==="dark"||saved==="light"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;})();</script>
+<link rel="stylesheet" href="../assets/site.css"></head>
+<body data-track="python" data-chapter="python-04"><a class="skip-link" href="#main">Skip to lesson</a>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="../index.html"><img src="../assets/course-mark.svg" alt=""><span>App Builder’s Workshop</span></a><nav class="topnav" aria-label="Main navigation"><a href="../index.html">Python course map</a><button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode: off</button></nav></div></header>
+<div class="reading-progress" aria-hidden="true"><span data-reading-progress></span></div>
+<main id="main" class="layout"><aside class="rail" aria-label="Python lesson navigation"><div class="rail-label">Python · 15 chapters</div>
+<a href="../index.html"><span class="rail-number">⌂</span>Workshop home</a>
+<a href="../index.html"><span class="rail-number">◎</span>Python course map</a>
+<div class="rail-label">Module 1 · Advanced Python Logic &amp; Data Wrangling</div>
+<a href="01-domain-logic.html"><span class="rail-number">01</span>Model the domain before the endpoint</a>
+<a href="02-control-flow-boundaries.html"><span class="rail-number">02</span>Wrangle CSV/JSON safely and cross the repository boundary</a>
+<a href="03-data-wrangling.html"><span class="rail-number">03</span>Make processing transactional, observable, and deployable</a>
+<div class="rail-label">Module 2 · Robust Scripting, Files &amp; Automation</div>
+<a href="04-cli-configuration.html" aria-current="page"><span class="rail-number">04</span>Contract-first CLI, configuration, and durable file intake</a>
+<a href="05-durable-file-pipelines.html"><span class="rail-number">05</span>Safe local subprocesses and authorized SSH/SFTP automation</a>
+<a href="06-remote-automation.html"><span class="rail-number">06</span>Queue boundaries, operational deployment, and production promotion</a>
+<div class="rail-label">Module 3 · Web Scraping, APIs &amp; Browser Automation</div>
+<a href="07-http-api-clients.html"><span class="rail-number">07</span>HTTPX API clients, schemas, pagination, and safe retries</a>
+<a href="08-responsible-scraping.html"><span class="rail-number">08</span>API-first responsible scraping with policy checks and selector parsing</a>
+<a href="09-playwright-automation.html"><span class="rail-number">09</span>Authorized Playwright workflows and production queue boundaries</a>
+<div class="rail-label">Module 4 · Asyncio, Scheduling &amp; Background Queues</div>
+<a href="10-asyncio-concurrency.html"><span class="rail-number">10</span>Async foundations: event loops, cancellation, and backpressure</a>
+<a href="11-celery-scheduling.html"><span class="rail-number">11</span>Choosing a scheduler: cron, in-process jobs, and durable background work</a>
+<a href="12-durable-job-operations.html"><span class="rail-number">12</span>Celery in production: broker, workers, Beat, and reliable task boundaries</a>
+<div class="rail-label">Module 5 · Containers, Linux, Monitoring &amp; Security</div>
+<a href="13-linux-systemd-deployment.html"><span class="rail-number">13</span>Linux foundations and a reliable local service</a>
+<a href="14-docker-cloud-deployment.html"><span class="rail-number">14</span>Containers and the API/PostgreSQL/Redis/worker/Beat layout</a>
+<a href="15-observability-security-launch.html"><span class="rail-number">15</span>VPS production runbook: TLS, observability, security, backups, and release safety</a></aside><div class="main">
+<div class="crumbs"><a href="../index.html">App Builder’s Workshop</a> / <a href="../index.html">Python course</a> / Chapter 04</div>
+<header class="lesson-header"><div class="eyebrow">Python Backend &amp; Automation · Module 2: Robust Scripting, Files &amp; Automation</div><h1>Contract-first CLI, configuration, and durable file intake</h1><p class="lead">This chapter connects practical Python/backend techniques to the capstone data-intake service. Work through the objectives, run the code locally, and then compare the operational notes before adapting the pattern to production.</p><div class="lesson-meta"><span>Chapter 04 of 15</span><span>Concepts · code · deployment · resilience · build</span></div></header>
+<div class="lesson-tools"><a href="#lesson-content">Jump to lesson</a><a href="#capstone-step">Jump to capstone step</a><span>Use the references at the end to go deeper.</span></div>
+<article id="lesson-content" class="lesson-content backend-lesson"><h3 id="overview-objectives-and-architecture-relevance">Overview, objectives, and architecture relevance</h3>
+<p>A production script is a small service: it has an input contract, configuration boundary, observable outcomes, and a recovery story. By the end of this chapter, learners can (1) design an explicit CLI with safe defaults and a <code>--dry-run</code> mode, (2) layer environment/configuration without putting secrets in source, (3) stream CSV and JSON Lines instead of loading unbounded files, (4) validate records before side effects, (5) calculate a SHA-256 content identity, and (6) make checkpoints and output publication restartable.</p>
+<p>This matters in server architecture because intake jobs often run under cron, systemd, a container, or a queue worker. A predictable exit code, bounded memory, and durable checkpoint let an orchestrator decide whether to retry. A database uniqueness constraint is a useful <em>deduplication mechanism</em>, not proof of exactly-once delivery: a process can crash between any two external side effects.</p>
+<h3 id="ordered-topics">Ordered topics</h3>
+<ol>
+<li><strong>Interface first.</strong> Define input format, required fields, maximum file/field sizes, exit codes, and whether a repeated <code>item_id</code> means “same item” or “conflict.” Keep CLI flags for operator intent and environment variables for deployment-specific values. Environment values arrive as strings and must be converted and validated in code; FastAPI’s settings guidance documents this pattern and dependency-cached settings for tests <a href="https://fastapi.tiangolo.com/advanced/settings/" target="_blank" rel="noopener noreferrer" title="FastAPI Settings and Environment Variables">1</a>.</li>
+<li><strong>Paths and formats.</strong> Use <code>pathlib.Path</code>, explicit UTF-8, and <code>newline=''</code> for CSV. Python’s CSV reader is iterable and does not perform automatic type conversion; JSON is not a framed protocol, so a stream of repeated <code>json.dump()</code> calls is invalid JSON <a href="https://docs.python.org/3/library/json.html" target="_blank" rel="noopener noreferrer" title="Python json — JSON encoder and decoder">2</a>. For large feeds, choose CSV rows or JSON Lines (one JSON object per line), not one giant JSON array.</li>
+<li><strong>Validation before effects.</strong> Reject missing/unknown identifiers, oversized fields, invalid JSON, and unsupported formats before writing to the database or invoking a remote command. Treat filenames, metadata, and record values as untrusted.</li>
+<li><strong>Identity and durability.</strong> Hash the input bytes with SHA-256 in chunks. Python documents incremental <code>update()</code> and <code>file_digest()</code> for file-like objects <a href="https://docs.python.org/3/library/hashlib.html" target="_blank" rel="noopener noreferrer" title="Python hashlib — Secure hashes and message digests">4</a>. Write a temporary file in the destination directory, flush and <code>fsync</code>, then <code>Path.replace()</code> it. A directory <code>fsync</code> may be added on filesystems where crash durability is required; atomic publication prevents readers from seeing a half-written file, but cannot replace backups, replication, or a database transaction.</li>
+<li><strong>Concurrency.</strong> Use a local advisory lock for one-host jobs. The sample uses Linux <code>fcntl.flock</code>; for multiple hosts, use the database/queue’s coordination or PostgreSQL advisory locks rather than pretending a local lock is distributed.</li>
+</ol>
+<h3 id="runnable-development-demo-intake_clipy">Runnable development demo: <code>intake_cli.py</code></h3>
+<pre><code class="language-python">#!/usr/bin/env python3
+&quot;&quot;&quot;Development demo: stream CSV/JSONL into a local SQLite intake ledger.&quot;&quot;&quot;
+from __future__ import annotations
+import argparse, csv, hashlib, json, logging, os, sqlite3, tempfile
+from contextlib import contextmanager
+from pathlib import Path
+import fcntl                         # Linux/macOS demo; use a DB lock in production
+
+LOG = logging.getLogger(&quot;intake&quot;)
+REQUIRED = {&quot;id&quot;, &quot;value&quot;}
+
+@contextmanager
+def exclusive_lock(lock_path: Path):
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open(&quot;w&quot;) as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try: yield
+        finally: fcntl.flock(handle, fcntl.LOCK_UN)
+
+def sha256_file(path: Path) -&gt; str:
+    with path.open(&quot;rb&quot;) as src:
+        return hashlib.file_digest(src, &quot;sha256&quot;).hexdigest()
+
+def atomic_write(path: Path, data: bytes) -&gt; None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix=f&quot;.{path.name}.&quot;, dir=path.parent)
+    try:
+        with os.fdopen(fd, &quot;wb&quot;) as dst:
+            dst.write(data); dst.flush(); os.fsync(dst.fileno())
+        Path(name).replace(path)       # same-filesystem atomic name switch
+    finally:
+        Path(name).unlink(missing_ok=True)
+
+def records(path: Path, fmt: str):
+    if path.stat().st_size &gt; 512 * 1024 * 1024:
+        raise ValueError(&quot;input exceeds configured 512 MiB demo limit&quot;)
+    if fmt == &quot;csv&quot;:
+        with path.open(&quot;r&quot;, encoding=&quot;utf-8&quot;, newline=&quot;&quot;) as src:
+            reader = csv.DictReader(src)
+            for row in reader: yield dict(row)
+    else:                              # JSON Lines, deliberately streaming
+        with path.open(&quot;r&quot;, encoding=&quot;utf-8&quot;) as src:
+            for line_no, line in enumerate(src, 1):
+                if len(line.encode(&quot;utf-8&quot;)) &gt; 1_048_576:
+                    raise ValueError(f&quot;line {line_no} exceeds 1 MiB&quot;)
+                if line.strip():
+                    row = json.loads(line)
+                    if not isinstance(row, dict):
+                        raise ValueError(f&quot;line {line_no} must contain a JSON object&quot;)
+                    yield row
+
+def validate(row: dict) -&gt; dict:
+    if not REQUIRED.issubset(row): raise ValueError(&quot;record requires id and value&quot;)
+    item_id, value = str(row[&quot;id&quot;]).strip(), str(row[&quot;value&quot;])
+    if not item_id or len(item_id) &gt; 128: raise ValueError(&quot;invalid id&quot;)
+    if len(value.encode(&quot;utf-8&quot;)) &gt; 64 * 1024: raise ValueError(&quot;value too large&quot;)
+    return {&quot;id&quot;: item_id, &quot;value&quot;: value, &quot;source&quot;: str(row.get(&quot;source&quot;, &quot;&quot;))}
+
+def run(input_path: Path, db_path: Path, archive: Path, fmt: str, dry_run: bool) -&gt; int:
+    digest = sha256_file(input_path)
+    with exclusive_lock(db_path.with_suffix(&quot;.lock&quot;)):
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(db_path) as db:
+            db.execute(&quot;CREATE TABLE IF NOT EXISTS records(id TEXT PRIMARY KEY, digest TEXT NOT NULL, payload TEXT NOT NULL)&quot;)
+            db.execute(&quot;CREATE TABLE IF NOT EXISTS checkpoints(file_digest TEXT PRIMARY KEY, count INTEGER NOT NULL)&quot;)
+            count = 0
+            for raw in records(input_path, fmt):
+                item = validate(raw); count += 1
+                payload = json.dumps(item, sort_keys=True, separators=(&quot;,&quot;, &quot;:&quot;))
+                if dry_run:
+                    LOG.info(&quot;would accept id=%s&quot;, item[&quot;id&quot;])
+                    continue
+                # Same id + same data is a replay; same id + different data is a conflict.
+                old = db.execute(&quot;SELECT digest FROM records WHERE id=?&quot;, (item[&quot;id&quot;],)).fetchone()
+                item_digest = hashlib.sha256(payload.encode()).hexdigest()
+                if old and old[0] != item_digest: raise ValueError(f&quot;id conflict: {item['id']}&quot;)
+                db.execute(&quot;INSERT OR IGNORE INTO records VALUES (?, ?, ?)&quot;, (item[&quot;id&quot;], item_digest, payload))
+            if not dry_run:
+                db.execute(&quot;INSERT OR REPLACE INTO checkpoints VALUES (?, ?)&quot;, (digest, count))
+                db.commit()
+                atomic_write(archive / f&quot;{digest}.json&quot;, json.dumps({&quot;source&quot;: input_path.name, &quot;records&quot;: count}).encode())
+    LOG.info(&quot;accepted=%d file_sha256=%s&quot;, count, digest)
+    return 0
+
+def main() -&gt; int:
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument(&quot;input&quot;, type=Path); p.add_argument(&quot;--format&quot;, choices=(&quot;csv&quot;, &quot;jsonl&quot;), required=True)
+    p.add_argument(&quot;--db&quot;, type=Path, default=Path(os.getenv(&quot;INTAKE_DB&quot;, &quot;./var/intake.sqlite&quot;)))
+    p.add_argument(&quot;--archive&quot;, type=Path, default=Path(&quot;./var/archive&quot;)); p.add_argument(&quot;--dry-run&quot;, action=&quot;store_true&quot;)
+    args = p.parse_args(); logging.basicConfig(level=logging.INFO, format=&quot;%(asctime)s %(levelname)s %(message)s&quot;)
+    try: return run(args.input, args.db, args.archive, args.format, args.dry_run)
+    except (OSError, ValueError, json.JSONDecodeError, sqlite3.Error) as exc:
+        LOG.exception(&quot;intake failed: %s&quot;, exc); return 2
+
+if __name__ == &quot;__main__&quot;: raise SystemExit(main())
+</code></pre>
+<h3 id="deployment-and-operations-context">Deployment and operations context</h3>
+<p><strong>Development demo:</strong> run <code>python intake_cli.py sample.csv --format csv --dry-run</code>, then without dry-run against <code>./var/intake.sqlite</code>. Unit-test malformed lines, duplicate IDs, conflicting IDs, partial temporary files, and a killed process. <strong>Server:</strong> run as a dedicated non-root user with a writable data directory, systemd <code>Restart=on-failure</code>, bounded start/stop timeouts, and rate limits. systemd documents <code>Restart=on-failure</code> as the recommended choice for long-running services <a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html" target="_blank" rel="noopener noreferrer" title="systemd.service">5</a>. <strong>Container/cloud:</strong> mount input/archive storage as a volume or object-storage staging area; keep the container ephemeral and run as non-root. Docker recommends small trusted images, regular rebuilds, multi-stage builds, and <code>USER</code> when privileges are unnecessary <a href="https://docs.docker.com/build/building/best-practices/" target="_blank" rel="noopener noreferrer" title="Docker Building best practices">6</a>. A cloud version can place immutable objects in provider storage and put object keys plus the checksum on a managed queue; the worker still validates and deduplicates.</p>
+<h3 id="failure-logging-retry-idempotency-and-security-notes">Failure, logging, retry, idempotency, and security notes</h3>
+<p>Log structured fields such as <code>job_id</code>, <code>file_sha256</code>, <code>item_id</code>, count, elapsed time, and error class, never full payloads or credentials. Retry transient I/O and database-busy errors with bounded exponential backoff; do not retry malformed input or an ID conflict. The checkpoint says what this process observed, not that downstream processing completed. Keep raw inputs quarantined until validation succeeds, enforce disk quotas, and set permissions on the SQLite file and archive. SHA-256 detects accidental corruption and supports deduplication; it is not an authenticity signature. For authenticity, verify a separately managed signature or authenticated transport.</p>
+<p><span id="capstone-step"></span></p>
+<h3 id="hands-on-build-step">Hands-on build step</h3>
+<p>Add the CLI to the capstone as the <strong>file intake adapter</strong>. Define the canonical <code>item_id</code>, archive accepted input by checksum, and expose a <code>replay</code> command that reads the checkpoint ledger. Demonstrate a killed run followed by a replay: the same records are not duplicated, while a changed payload for the same ID is reported as a conflict. This is at-least-once-friendly processing, not exactly-once delivery.</p><section class="course-references" id="references"><h2>References</h2><ol><li id="ref-1"><a href="https://fastapi.tiangolo.com/advanced/settings/" target="_blank" rel="noopener noreferrer">FastAPI Settings and Environment Variables</a></li><li id="ref-2"><a href="https://docs.python.org/3/library/csv.html" target="_blank" rel="noopener noreferrer">Python csv — CSV File Reading and Writing</a></li><li id="ref-3"><a href="https://docs.python.org/3/library/json.html" target="_blank" rel="noopener noreferrer">Python json — JSON encoder and decoder</a></li><li id="ref-4"><a href="https://docs.python.org/3/library/hashlib.html" target="_blank" rel="noopener noreferrer">Python hashlib — Secure hashes and message digests</a></li><li id="ref-5"><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html" target="_blank" rel="noopener noreferrer">systemd.service</a></li><li id="ref-6"><a href="https://docs.docker.com/build/building/best-practices/" target="_blank" rel="noopener noreferrer">Docker Building best practices</a></li></ol></section></article>
+<button class="mark-complete" type="button" data-complete aria-pressed="false">Mark this chapter complete</button>
+<nav class="lesson-nav" aria-label="Previous and next lessons"><a href="03-data-wrangling.html"><small>Previous lesson</small><strong>← Make processing transactional, observable, and deployable</strong></a><a href="05-durable-file-pipelines.html"><small>Next lesson</small><strong>Safe local subprocesses and authorized SSH/SFTP automation →</strong></a></nav>
+</div></main><footer class="footer"><a href="../index.html">Python Backend &amp; Automation</a> · <a href="../index.html">App Builder’s Workshop</a> · Progress is local to this browser.</footer><script src="../assets/site.js" defer></script></body></html>

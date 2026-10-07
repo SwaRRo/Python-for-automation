@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="Workshop course mark">
+  <rect x="2" y="2" width="44" height="44" rx="11" fill="#123B5D"/>
+  <path d="M10 15.5c5-1.8 9.3-.7 14 2.4v17c-4.7-3.1-9-4.2-14-2.4z" fill="#fff"/>
+  <path d="M38 15.5c-5-1.8-9.3-.7-14 2.4v17c4.7-3.1 9-4.2 14-2.4z" fill="#dceef6"/>
+  <path d="M24 18v17" fill="none" stroke="#E38B29" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M34.5 7.5v4M32.5 9.5h4M30.8 12.2l1.6 1.6" fill="none" stroke="#E38B29" stroke-width="2" stroke-linecap="round"/>
+  <path d="M13 20.5c3.1-.6 5.8.1 8.2 1.5M13 25c3.1-.6 5.8.1 8.2 1.5M27 22c2.4-1.4 5.1-2.1 8.2-1.5M27 26.5c2.4-1.4 5.1-2.1 8.2-1.5" fill="none" stroke="#123B5D" stroke-width="1.2" stroke-linecap="round" opacity=".75"/>
+</svg>

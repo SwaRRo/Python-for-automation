@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Chapter 1: Model the domain before the endpoint. A practical Python backend and automation lesson with code, deployment context, resilience, and a capstone build step.">
+<title>01 — Model the domain before the endpoint · Python Backend &amp; Automation</title>
+<link rel="icon" href="../assets/course-mark.svg" type="image/svg+xml">
+<script>(()=>{let saved=null;try{saved=localStorage.getItem("app-workshop-theme");}catch{}const theme=saved==="dark"||saved==="light"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;})();</script>
+<link rel="stylesheet" href="../assets/site.css"></head>
+<body data-track="python" data-chapter="python-01"><a class="skip-link" href="#main">Skip to lesson</a>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="../index.html"><img src="../assets/course-mark.svg" alt=""><span>App Builder’s Workshop</span></a><nav class="topnav" aria-label="Main navigation"><a href="../index.html">Python course map</a><button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode: off</button></nav></div></header>
+<div class="reading-progress" aria-hidden="true"><span data-reading-progress></span></div>
+<main id="main" class="layout"><aside class="rail" aria-label="Python lesson navigation"><div class="rail-label">Python · 15 chapters</div>
+<a href="../index.html"><span class="rail-number">⌂</span>Workshop home</a>
+<a href="../index.html"><span class="rail-number">◎</span>Python course map</a>
+<div class="rail-label">Module 1 · Advanced Python Logic &amp; Data Wrangling</div>
+<a href="01-domain-logic.html" aria-current="page"><span class="rail-number">01</span>Model the domain before the endpoint</a>
+<a href="02-control-flow-boundaries.html"><span class="rail-number">02</span>Wrangle CSV/JSON safely and cross the repository boundary</a>
+<a href="03-data-wrangling.html"><span class="rail-number">03</span>Make processing transactional, observable, and deployable</a>
+<div class="rail-label">Module 2 · Robust Scripting, Files &amp; Automation</div>
+<a href="04-cli-configuration.html"><span class="rail-number">04</span>Contract-first CLI, configuration, and durable file intake</a>
+<a href="05-durable-file-pipelines.html"><span class="rail-number">05</span>Safe local subprocesses and authorized SSH/SFTP automation</a>
+<a href="06-remote-automation.html"><span class="rail-number">06</span>Queue boundaries, operational deployment, and production promotion</a>
+<div class="rail-label">Module 3 · Web Scraping, APIs &amp; Browser Automation</div>
+<a href="07-http-api-clients.html"><span class="rail-number">07</span>HTTPX API clients, schemas, pagination, and safe retries</a>
+<a href="08-responsible-scraping.html"><span class="rail-number">08</span>API-first responsible scraping with policy checks and selector parsing</a>
+<a href="09-playwright-automation.html"><span class="rail-number">09</span>Authorized Playwright workflows and production queue boundaries</a>
+<div class="rail-label">Module 4 · Asyncio, Scheduling &amp; Background Queues</div>
+<a href="10-asyncio-concurrency.html"><span class="rail-number">10</span>Async foundations: event loops, cancellation, and backpressure</a>
+<a href="11-celery-scheduling.html"><span class="rail-number">11</span>Choosing a scheduler: cron, in-process jobs, and durable background work</a>
+<a href="12-durable-job-operations.html"><span class="rail-number">12</span>Celery in production: broker, workers, Beat, and reliable task boundaries</a>
+<div class="rail-label">Module 5 · Containers, Linux, Monitoring &amp; Security</div>
+<a href="13-linux-systemd-deployment.html"><span class="rail-number">13</span>Linux foundations and a reliable local service</a>
+<a href="14-docker-cloud-deployment.html"><span class="rail-number">14</span>Containers and the API/PostgreSQL/Redis/worker/Beat layout</a>
+<a href="15-observability-security-launch.html"><span class="rail-number">15</span>VPS production runbook: TLS, observability, security, backups, and release safety</a></aside><div class="main">
+<div class="crumbs"><a href="../index.html">App Builder’s Workshop</a> / <a href="../index.html">Python course</a> / Chapter 01</div>
+<header class="lesson-header"><div class="eyebrow">Python Backend &amp; Automation · Module 1: Advanced Python Logic &amp; Data Wrangling</div><h1>Model the domain before the endpoint</h1><p class="lead">This chapter connects practical Python/backend techniques to the capstone data-intake service. Work through the objectives, run the code locally, and then compare the operational notes before adapting the pattern to production.</p><div class="lesson-meta"><span>Chapter 01 of 15</span><span>Concepts · code · deployment · resilience · build</span></div></header>
+<div class="lesson-tools"><a href="#lesson-content">Jump to lesson</a><a href="#capstone-step">Jump to capstone step</a><span>Use the references at the end to go deeper.</span></div>
+<article id="lesson-content" class="lesson-content backend-lesson"><h3 id="11-overview-objectives-and-architectural-reason">1.1 Overview, objectives, and architectural reason</h3>
+<p>A backend is reliable when invalid states are difficult to create, not merely when the happy path returns HTTP 200. In this chapter learners will: (1) turn a business statement into explicit entities and invariants; (2) distinguish static type hints from runtime validation; (3) use a frozen dataclass for a trusted domain value and Pydantic for an untrusted transport boundary; (4) define specific exceptions and map them to HTTP responses; and (5) keep the route thin by separating API, service, and repository responsibilities.</p>
+<p>This matters in server architecture because a route is an integration boundary. Type hints help editors and checkers but Python does not enforce them at runtime <a href="https://docs.python.org/3/library/typing.html" target="_blank" rel="noopener noreferrer" title="Python typing — Support for type hints">1</a>. FastAPI uses Pydantic models to parse and validate request bodies and expose their JSON Schema in OpenAPI <a href="https://fastapi.tiangolo.com/tutorial/body/" target="_blank" rel="noopener noreferrer" title="FastAPI Request Body">2</a>. The result should be a domain object whose invariants hold whether it came from HTTP, a file, a queue, or a test.</p>
+<p><strong>Business contract for RDI:</strong> an intake event has a non-empty stable <code>event_id</code>, a bounded <code>customer_id</code>, a positive monetary <code>amount</code> with exactly two fractional places, and an unambiguous UTC instant. Replaying the same <code>event_id</code> must not create a second business effect. These are business invariants, not UI conveniences.</p>
+<h3 id="12-ordered-topics">1.2 Ordered topics</h3>
+<ol>
+<li><strong>Domain language and invariants.</strong> Write examples of valid and invalid events first. Separate syntactic rules (required fields, formats, maximum lengths) from semantic rules (positive money, UTC instant, stable identity). OWASP recommends validating untrusted data as early as possible and applying both syntactic and semantic validation <a href="https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html" target="_blank" rel="noopener noreferrer" title="OWASP Input Validation Cheat Sheet">3</a>.</li>
+<li><strong>Boundary versus core.</strong> Pydantic validates untrusted dictionaries/JSON. A frozen dataclass represents a normalized, trusted value. <code>@dataclass(frozen=True)</code> prevents ordinary field assignment after construction; it does not make nested objects magically immutable <a href="https://docs.python.org/3/library/dataclasses.html" target="_blank" rel="noopener noreferrer" title="Python dataclasses — Data Classes">4</a>.</li>
+<li><strong>Control flow and exceptions.</strong> Catch expected validation errors at the boundary, log with a correlation/request ID, and let unexpected exceptions reach the server error handler. Python’s tutorial recommends specific exception handlers and re-raising unexpected failures <a href="https://docs.python.org/3/tutorial/errors.html" target="_blank" rel="noopener noreferrer" title="Python Tutorial — Errors and Exceptions">5</a>.</li>
+<li><strong>Service/repository boundary.</strong> The service owns business decisions; the repository owns persistence. Neither should fetch credentials or parse HTTP request details.</li>
+<li><strong>Development demo versus production.</strong> The local demo below uses an in-memory list repository. Production replaces it with a database repository and authentication/authorization middleware. It is intentionally not a durable queue or a transaction coordinator.</li>
+</ol>
+<h3 id="13-code-blueprint-domainpy-and-apppy">1.3 Code blueprint: <code>domain.py</code> and <code>app.py</code></h3>
+<p>The following is near-runnable (<code>pip install fastapi pydantic uvicorn</code>; pin versions in your lock file). Send <code>amount</code> as a JSON string so decimal intent is unambiguous.</p>
+<pre><code class="language-python"># domain.py — Python 3.11+
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
+import re
+
+_EVENT_ID = re.compile(r&quot;^[A-Za-z0-9._:-]{1,100}$&quot;)
+_CENT = Decimal(&quot;0.01&quot;)
+
+class DomainError(ValueError):
+    &quot;&quot;&quot;Expected business-rule failure; safe to expose as 400/422.&quot;&quot;&quot;
+
+@dataclass(frozen=True, slots=True)
+class IntakeEvent:
+    event_id: str
+    customer_id: str
+    amount: Decimal
+    occurred_at: datetime
+
+    def __post_init__(self) -&gt; None:
+        if not _EVENT_ID.fullmatch(self.event_id):
+            raise DomainError(&quot;event_id has an unsupported format&quot;)
+        if not 1 &lt;= len(self.customer_id) &lt;= 80:
+            raise DomainError(&quot;customer_id length is outside the allowed range&quot;)
+        if self.amount &lt;= 0 or self.amount != self.amount.quantize(_CENT):
+            raise DomainError(&quot;amount must be positive and have two decimal places&quot;)
+        if self.occurred_at.tzinfo is None or self.occurred_at.utcoffset() is None:
+            raise DomainError(&quot;occurred_at must be timezone-aware&quot;)
+
+    @property
+    def occurred_at_utc(self) -&gt; datetime:
+        return self.occurred_at.astimezone(timezone.utc)
+</code></pre>
+<pre><code class="language-python"># app.py — development demo; persistence is intentionally non-durable.
+from datetime import datetime
+from decimal import Decimal, InvalidOperation
+from typing import Any
+from fastapi import FastAPI, HTTPException, Request
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from domain import DomainError, IntakeEvent
+
+class IntakeRequest(BaseModel):
+    model_config = ConfigDict(extra=&quot;forbid&quot;, str_strip_whitespace=True)
+    event_id: str = Field(min_length=1, max_length=100)
+    customer_id: str = Field(min_length=1, max_length=80)
+    amount: Decimal
+    occurred_at: datetime
+
+    @field_validator(&quot;amount&quot;)
+    @classmethod
+    def money(cls, value: Decimal) -&gt; Decimal:
+        try:
+            if value &lt;= 0 or value != value.quantize(Decimal(&quot;0.01&quot;)):
+                raise ValueError(&quot;amount must be positive with two decimal places&quot;)
+        except (InvalidOperation, ValueError) as exc:
+            raise ValueError(str(exc)) from exc
+        return value
+
+    @field_validator(&quot;occurred_at&quot;)
+    @classmethod
+    def aware_time(cls, value: datetime) -&gt; datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError(&quot;occurred_at must include a timezone&quot;)
+        return value
+
+class MemoryRepository:
+    def __init__(self) -&gt; None:
+        self.rows: dict[str, IntakeEvent] = {}
+
+    def upsert(self, event: IntakeEvent) -&gt; IntakeEvent:
+        # Demo semantics: same key replaces the representation. Production must
+        # make this atomic in a database and define whether conflicting payloads
+        # are rejected rather than silently updated.
+        self.rows[event.event_id] = event
+        return event
+
+repo = MemoryRepository()
+app = FastAPI(title=&quot;Reliable Data Intake &amp; Processing Service&quot;)
+
+@app.post(&quot;/intake&quot;, status_code=201)
+def intake(payload: IntakeRequest, request: Request) -&gt; dict[str, Any]:
+    request_id = request.headers.get(&quot;x-request-id&quot;, &quot;generated-locally&quot;)
+    try:
+        event = IntakeEvent(**payload.model_dump())
+        saved = repo.upsert(event)
+    except DomainError as exc:
+        # Do not log the full payload: it may contain personal or financial data.
+        raise HTTPException(status_code=422, detail=str(exc),
+                            headers={&quot;X-Request-ID&quot;: request_id}) from exc
+    return {&quot;event_id&quot;: saved.event_id, &quot;status&quot;: &quot;accepted&quot;,
+            &quot;request_id&quot;: request_id}
+</code></pre>
+<h3 id="14-local-server-and-cloud-operations-context">1.4 Local, server, and cloud operations context</h3>
+<p><strong>Local development demo:</strong> create a virtual environment, run <code>uvicorn app:app --reload</code>, and exercise <code>/docs</code> or <code>curl</code>; the dictionary is not durable. <strong>Server deployment:</strong> replace it before using multiple workers, then add TLS, an authenticated proxy, body-size limits, and structured stdout logs. <strong>Cloud path:</strong> place containers behind a managed load balancer and adopt managed PostgreSQL plus a durable queue before claiming availability or durability.</p>
+<h3 id="15-failure-logging-retry-idempotency-and-security-notes">1.5 Failure, logging, retry, idempotency, and security notes</h3>
+<p>Malformed JSON, oversized bodies, missing timezones, invalid money, and unknown fields are 4xx failures: increment a metric and log type plus request ID, not payloads. Never log bearer tokens, passwords, database URLs, or personal/financial data; OWASP lists these for masking or exclusion <a href="https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html" target="_blank" rel="noopener noreferrer" title="OWASP Logging Cheat Sheet">6</a>. Validation is not retryable. Retry transient storage/queue failures only with a stable idempotency key. Do not call this exactly-once: a process may commit before a reply is lost.</p>
+<p><span id="capstone-step"></span></p>
+<h3 id="16-hands-on-build-step">1.6 Hands-on build step</h3>
+<p>Implement <code>domain.py</code>, <code>app.py</code>, and four invariant tests. Add a <code>request_id</code> to responses/logs and demonstrate that replaying <code>event_id</code> does not add a second key. This is <strong>development-demo only</strong> and establishes the contract for Chapters 2–3.</p><section class="course-references" id="references"><h2>References</h2><ol><li id="ref-1"><a href="https://docs.python.org/3/library/typing.html" target="_blank" rel="noopener noreferrer">Python typing — Support for type hints</a></li><li id="ref-2"><a href="https://fastapi.tiangolo.com/tutorial/body/" target="_blank" rel="noopener noreferrer">FastAPI Request Body</a></li><li id="ref-3"><a href="https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html" target="_blank" rel="noopener noreferrer">OWASP Input Validation Cheat Sheet</a></li><li id="ref-4"><a href="https://docs.python.org/3/library/dataclasses.html" target="_blank" rel="noopener noreferrer">Python dataclasses — Data Classes</a></li><li id="ref-5"><a href="https://docs.python.org/3/tutorial/errors.html" target="_blank" rel="noopener noreferrer">Python Tutorial — Errors and Exceptions</a></li><li id="ref-6"><a href="https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html" target="_blank" rel="noopener noreferrer">OWASP Logging Cheat Sheet</a></li></ol></section></article>
+<button class="mark-complete" type="button" data-complete aria-pressed="false">Mark this chapter complete</button>
+<nav class="lesson-nav" aria-label="Previous and next lessons"><a href="../index.html"><small>Python course</small><strong>← Python course map</strong></a><a href="02-control-flow-boundaries.html"><small>Next lesson</small><strong>Wrangle CSV/JSON safely and cross the repository boundary →</strong></a></nav>
+</div></main><footer class="footer"><a href="../index.html">Python Backend &amp; Automation</a> · <a href="../index.html">App Builder’s Workshop</a> · Progress is local to this browser.</footer><script src="../assets/site.js" defer></script></body></html>

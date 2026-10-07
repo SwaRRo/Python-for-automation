@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Chapter 11: Choosing a scheduler: cron, in-process jobs, and durable background work. A practical Python backend and automation lesson with code, deployment context, resilience, and a capstone build step.">
+<title>11 — Choosing a scheduler: cron, in-process jobs, and durable background work · Python Backend &amp; Automation</title>
+<link rel="icon" href="../assets/course-mark.svg" type="image/svg+xml">
+<script>(()=>{let saved=null;try{saved=localStorage.getItem("app-workshop-theme");}catch{}const theme=saved==="dark"||saved==="light"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;})();</script>
+<link rel="stylesheet" href="../assets/site.css"></head>
+<body data-track="python" data-chapter="python-11"><a class="skip-link" href="#main">Skip to lesson</a>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="../index.html"><img src="../assets/course-mark.svg" alt=""><span>App Builder’s Workshop</span></a><nav class="topnav" aria-label="Main navigation"><a href="../index.html">Python course map</a><button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode: off</button></nav></div></header>
+<div class="reading-progress" aria-hidden="true"><span data-reading-progress></span></div>
+<main id="main" class="layout"><aside class="rail" aria-label="Python lesson navigation"><div class="rail-label">Python · 15 chapters</div>
+<a href="../index.html"><span class="rail-number">⌂</span>Workshop home</a>
+<a href="../index.html"><span class="rail-number">◎</span>Python course map</a>
+<div class="rail-label">Module 1 · Advanced Python Logic &amp; Data Wrangling</div>
+<a href="01-domain-logic.html"><span class="rail-number">01</span>Model the domain before the endpoint</a>
+<a href="02-control-flow-boundaries.html"><span class="rail-number">02</span>Wrangle CSV/JSON safely and cross the repository boundary</a>
+<a href="03-data-wrangling.html"><span class="rail-number">03</span>Make processing transactional, observable, and deployable</a>
+<div class="rail-label">Module 2 · Robust Scripting, Files &amp; Automation</div>
+<a href="04-cli-configuration.html"><span class="rail-number">04</span>Contract-first CLI, configuration, and durable file intake</a>
+<a href="05-durable-file-pipelines.html"><span class="rail-number">05</span>Safe local subprocesses and authorized SSH/SFTP automation</a>
+<a href="06-remote-automation.html"><span class="rail-number">06</span>Queue boundaries, operational deployment, and production promotion</a>
+<div class="rail-label">Module 3 · Web Scraping, APIs &amp; Browser Automation</div>
+<a href="07-http-api-clients.html"><span class="rail-number">07</span>HTTPX API clients, schemas, pagination, and safe retries</a>
+<a href="08-responsible-scraping.html"><span class="rail-number">08</span>API-first responsible scraping with policy checks and selector parsing</a>
+<a href="09-playwright-automation.html"><span class="rail-number">09</span>Authorized Playwright workflows and production queue boundaries</a>
+<div class="rail-label">Module 4 · Asyncio, Scheduling &amp; Background Queues</div>
+<a href="10-asyncio-concurrency.html"><span class="rail-number">10</span>Async foundations: event loops, cancellation, and backpressure</a>
+<a href="11-celery-scheduling.html" aria-current="page"><span class="rail-number">11</span>Choosing a scheduler: cron, in-process jobs, and durable background work</a>
+<a href="12-durable-job-operations.html"><span class="rail-number">12</span>Celery in production: broker, workers, Beat, and reliable task boundaries</a>
+<div class="rail-label">Module 5 · Containers, Linux, Monitoring &amp; Security</div>
+<a href="13-linux-systemd-deployment.html"><span class="rail-number">13</span>Linux foundations and a reliable local service</a>
+<a href="14-docker-cloud-deployment.html"><span class="rail-number">14</span>Containers and the API/PostgreSQL/Redis/worker/Beat layout</a>
+<a href="15-observability-security-launch.html"><span class="rail-number">15</span>VPS production runbook: TLS, observability, security, backups, and release safety</a></aside><div class="main">
+<div class="crumbs"><a href="../index.html">App Builder’s Workshop</a> / <a href="../index.html">Python course</a> / Chapter 11</div>
+<header class="lesson-header"><div class="eyebrow">Python Backend &amp; Automation · Module 4: Asyncio, Scheduling &amp; Background Queues</div><h1>Choosing a scheduler: cron, in-process jobs, and durable background work</h1><p class="lead">This chapter connects practical Python/backend techniques to the capstone data-intake service. Work through the objectives, run the code locally, and then compare the operational notes before adapting the pattern to production.</p><div class="lesson-meta"><span>Chapter 11 of 15</span><span>Concepts · code · deployment · resilience · build</span></div></header>
+<div class="lesson-tools"><a href="#lesson-content">Jump to lesson</a><a href="#capstone-step">Jump to capstone step</a><span>Use the references at the end to go deeper.</span></div>
+<article id="lesson-content" class="lesson-content backend-lesson"><h3 id="overview-objectives-and-architectural-importance">Overview, objectives, and architectural importance</h3>
+<p>Learners will distinguish a <strong>trigger</strong> from a <strong>work queue</strong>, choose cron/systemd, in-process scheduling, or durable queues, explain overlap/DST duplicates, and use FastAPI <code>BackgroundTasks</code> only for small non-critical work.</p>
+<p>Cron examines entries each minute and runs matching commands; DST missing times do not run and repeated times can run twice <a href="https://man7.org/linux/man-pages/man5/crontab.5.html" target="_blank" rel="noopener noreferrer" title="crontab(5) — Linux manual page">3</a>. It is host-local and has no durable job record or distributed election. An in-process scheduler dies with its process and can duplicate across replicas; a durable queue separates trigger from scalable execution and can redeliver unacknowledged work.</p>
+<p>FastAPI <code>BackgroundTasks</code> runs after the response and suits small notifications. FastAPI recommends a larger tool such as Celery for heavy work across processes or servers <a href="https://fastapi.tiangolo.com/tutorial/background-tasks/" target="_blank" rel="noopener noreferrer" title="FastAPI Background Tasks">4</a>. Treat it as non-durable.</p>
+<h3 id="ordered-topics">Ordered topics</h3>
+<ol>
+<li><strong>Cron/systemd timer.</strong> Best for “invoke a command at 02:00,” database backups, or a reconciliation command on a controlled host. Redirect output to journald/a log sink, use a least-privilege service account, and make the command idempotent. Use UTC where possible and document DST behavior.</li>
+<li><strong>In-process scheduler.</strong> A loop using <code>asyncio.sleep</code> is fine for a one-process demo. Add a lock/lease if only one instance may schedule; otherwise two replicas enqueue duplicates.</li>
+<li><strong>Durable queue.</strong> The scheduler publishes a command; workers fetch, process, and acknowledge. Queue systems normally provide at-least-once delivery, so use idempotency keys and status transitions.</li>
+<li><strong>FastAPI boundary.</strong> Return <code>202 Accepted</code> after recording the intake and enqueueing/persisting the job. A <code>BackgroundTasks</code> callback is a demo shortcut only; a crash after response can lose it.</li>
+<li><strong>Overlap and clock discipline.</strong> A periodic task can overlap its previous run. Use a DB lease/advisory lock or a unique schedule window; use timezone-aware UTC timestamps.</li>
+</ol>
+<h3 id="complete-fastapi-sqlitemock-blueprint-development-demo">Complete FastAPI + SQLite/mock blueprint (development demo)</h3>
+<p>Install the development dependencies with <code>python -m pip install fastapi uvicorn</code>. Save as <code>api_demo.py</code>; run <code>uvicorn api_demo:app --reload</code>. It records before scheduling and uses <code>BackgroundTasks</code> to demonstrate the boundary, not durability.</p>
+<pre><code class="language-python">from __future__ import annotations
+import asyncio, sqlite3, uuid
+from fastapi import BackgroundTasks, FastAPI, HTTPException, status
+from pydantic import BaseModel, AnyHttpUrl
+
+DB = &quot;intake-demo.db&quot;; APPROVED_HOST = &quot;api.example.test&quot;
+app = FastAPI(title=&quot;Reliable Intake demo&quot;)
+class Intake(BaseModel): source_url: AnyHttpUrl
+
+def insert(job_id: str, url: str) -&gt; bool:
+    with sqlite3.connect(DB) as con:
+        con.execute(&quot;CREATE TABLE IF NOT EXISTS jobs (job_id TEXT PRIMARY KEY, source_url TEXT NOT NULL, status TEXT NOT NULL, result TEXT)&quot;)
+        cur = con.execute(&quot;INSERT OR IGNORE INTO jobs VALUES (?, ?, 'queued', NULL)&quot;, (job_id, url))
+        con.commit(); return cur.rowcount == 1
+
+def mark_done(job_id: str) -&gt; None:
+    # Demo only: a process crash between response and this call loses the work.
+    with sqlite3.connect(DB) as con:
+        con.execute(&quot;UPDATE jobs SET status='done', result='mocked' WHERE job_id=?&quot;, (job_id,)); con.commit()
+
+def schedule_one(job_id: str, url: str) -&gt; None:
+    # Demo only; production publishes {&quot;job_id&quot;: job_id} to a durable queue.
+    assert url.startswith(&quot;https://api.example.test/&quot;)
+    mark_done(job_id)
+
+@app.post(&quot;/intakes&quot;, status_code=status.HTTP_202_ACCEPTED)
+async def create_intake(item: Intake, background_tasks: BackgroundTasks):
+    if item.source_url.host != APPROVED_HOST:
+        raise HTTPException(400, &quot;Only the approved API host is allowed&quot;)
+    job_id = str(uuid.uuid4())
+    await asyncio.to_thread(insert, job_id, str(item.source_url))
+    background_tasks.add_task(schedule_one, job_id, str(item.source_url))
+    return {&quot;job_id&quot;: job_id, &quot;status&quot;: &quot;queued&quot;, &quot;durability&quot;: &quot;demo-only&quot;}
+</code></pre>
+<p>For the capstone, replace <code>background_tasks.add_task</code> with a transactional outbox: insert <code>jobs</code> and an <code>outbox</code> row in one PostgreSQL transaction, then publish and mark the outbox record. This closes the database-commit/publish gap.</p>
+<h3 id="deployment-and-operations-context">Deployment and operations context</h3>
+<p><strong>Local:</strong> kill Uvicorn between response and task execution to demonstrate loss. <strong>Server:</strong> use a systemd timer or one elected scheduler. Compose waits only for running containers unless healthchecks and <code>service_healthy</code> are configured <a href="https://docs.docker.com/compose/how-tos/startup-order/" target="_blank" rel="noopener noreferrer" title="Docker Compose startup order">7</a>; readiness is not durability. Docker recommends restart policies <a href="https://docs.docker.com/engine/containers/start-containers-automatically/" target="_blank" rel="noopener noreferrer" title="Docker Start containers automatically">6</a>. <strong>Production:</strong> scale API, scheduler, workers, PostgreSQL, and broker separately. Managed queues fit teams wanting provider-operated availability, IAM, metrics, DLQ, and elastic consumers. SQS visibility timeout hides a received message and redelivers it if not deleted; standard SQS is at-least-once <a href="https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html" target="_blank" rel="noopener noreferrer" title="Amazon SQS visibility timeout">9</a>. Pub/Sub dead-letter forwarding and attempt counts are best effort/approximate <a href="https://cloud.google.com/pubsub/docs/dead-letter-topics" target="_blank" rel="noopener noreferrer" title="Google Cloud Pub/Sub dead-letter topics">11</a>.</p>
+<h3 id="failure-logging-retry-idempotency-and-security-notes">Failure, logging, retry, idempotency, and security notes</h3>
+<p>A scheduler outage can miss a trigger; define catch-up behavior. Overlap requires a lease or unique schedule window. A broker outage must produce an error or outbox backlog, not a false <code>queued</code> claim. Log schedule, UTC fire time, enqueue result, and correlation ID. Validate scheme/host, block private destinations, cap responses, and set timeouts. Keep credentials in secret management with TLS and least privilege; task-message readers can access arguments even when logs redact them <a href="https://docs.celeryq.dev/en/stable/userguide/tasks.html" target="_blank" rel="noopener noreferrer" title="Celery Tasks">5</a>.</p>
+<p><span id="capstone-step"></span></p>
+<h3 id="hands-on-build-step">Hands-on build step</h3>
+<p>Add <code>GET /intakes/{job_id}</code> and a <code>reconcile</code> command that republishes old <code>queued</code> rows. Run two API replicas with the same periodic loop to reproduce duplicate scheduling; then add a unique <code>(source_url, schedule_window)</code> constraint. This creates the capstone’s safe intake API and recovery path.</p><section class="course-references" id="references"><h2>References</h2><ol><li id="ref-3"><a href="https://man7.org/linux/man-pages/man5/crontab.5.html" target="_blank" rel="noopener noreferrer">crontab(5) — Linux manual page</a></li><li id="ref-4"><a href="https://fastapi.tiangolo.com/tutorial/background-tasks/" target="_blank" rel="noopener noreferrer">FastAPI Background Tasks</a></li><li id="ref-5"><a href="https://docs.celeryq.dev/en/stable/userguide/tasks.html" target="_blank" rel="noopener noreferrer">Celery Tasks</a></li><li id="ref-6"><a href="https://docs.docker.com/engine/containers/start-containers-automatically/" target="_blank" rel="noopener noreferrer">Docker Start containers automatically</a></li><li id="ref-7"><a href="https://docs.docker.com/compose/how-tos/startup-order/" target="_blank" rel="noopener noreferrer">Docker Compose startup order</a></li><li id="ref-9"><a href="https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html" target="_blank" rel="noopener noreferrer">Amazon SQS visibility timeout</a></li><li id="ref-11"><a href="https://cloud.google.com/pubsub/docs/dead-letter-topics" target="_blank" rel="noopener noreferrer">Google Cloud Pub/Sub dead-letter topics</a></li></ol></section></article>
+<button class="mark-complete" type="button" data-complete aria-pressed="false">Mark this chapter complete</button>
+<nav class="lesson-nav" aria-label="Previous and next lessons"><a href="10-asyncio-concurrency.html"><small>Previous lesson</small><strong>← Async foundations: event loops, cancellation, and backpressure</strong></a><a href="12-durable-job-operations.html"><small>Next lesson</small><strong>Celery in production: broker, workers, Beat, and reliable task boundaries →</strong></a></nav>
+</div></main><footer class="footer"><a href="../index.html">Python Backend &amp; Automation</a> · <a href="../index.html">App Builder’s Workshop</a> · Progress is local to this browser.</footer><script src="../assets/site.js" defer></script></body></html>

@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Chapter 8: API-first responsible scraping with policy checks and selector parsing. A practical Python backend and automation lesson with code, deployment context, resilience, and a capstone build step.">
+<title>08 — API-first responsible scraping with policy checks and selector parsing · Python Backend &amp; Automation</title>
+<link rel="icon" href="../assets/course-mark.svg" type="image/svg+xml">
+<script>(()=>{let saved=null;try{saved=localStorage.getItem("app-workshop-theme");}catch{}const theme=saved==="dark"||saved==="light"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;})();</script>
+<link rel="stylesheet" href="../assets/site.css"></head>
+<body data-track="python" data-chapter="python-08"><a class="skip-link" href="#main">Skip to lesson</a>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="../index.html"><img src="../assets/course-mark.svg" alt=""><span>App Builder’s Workshop</span></a><nav class="topnav" aria-label="Main navigation"><a href="../index.html">Python course map</a><button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode: off</button></nav></div></header>
+<div class="reading-progress" aria-hidden="true"><span data-reading-progress></span></div>
+<main id="main" class="layout"><aside class="rail" aria-label="Python lesson navigation"><div class="rail-label">Python · 15 chapters</div>
+<a href="../index.html"><span class="rail-number">⌂</span>Workshop home</a>
+<a href="../index.html"><span class="rail-number">◎</span>Python course map</a>
+<div class="rail-label">Module 1 · Advanced Python Logic &amp; Data Wrangling</div>
+<a href="01-domain-logic.html"><span class="rail-number">01</span>Model the domain before the endpoint</a>
+<a href="02-control-flow-boundaries.html"><span class="rail-number">02</span>Wrangle CSV/JSON safely and cross the repository boundary</a>
+<a href="03-data-wrangling.html"><span class="rail-number">03</span>Make processing transactional, observable, and deployable</a>
+<div class="rail-label">Module 2 · Robust Scripting, Files &amp; Automation</div>
+<a href="04-cli-configuration.html"><span class="rail-number">04</span>Contract-first CLI, configuration, and durable file intake</a>
+<a href="05-durable-file-pipelines.html"><span class="rail-number">05</span>Safe local subprocesses and authorized SSH/SFTP automation</a>
+<a href="06-remote-automation.html"><span class="rail-number">06</span>Queue boundaries, operational deployment, and production promotion</a>
+<div class="rail-label">Module 3 · Web Scraping, APIs &amp; Browser Automation</div>
+<a href="07-http-api-clients.html"><span class="rail-number">07</span>HTTPX API clients, schemas, pagination, and safe retries</a>
+<a href="08-responsible-scraping.html" aria-current="page"><span class="rail-number">08</span>API-first responsible scraping with policy checks and selector parsing</a>
+<a href="09-playwright-automation.html"><span class="rail-number">09</span>Authorized Playwright workflows and production queue boundaries</a>
+<div class="rail-label">Module 4 · Asyncio, Scheduling &amp; Background Queues</div>
+<a href="10-asyncio-concurrency.html"><span class="rail-number">10</span>Async foundations: event loops, cancellation, and backpressure</a>
+<a href="11-celery-scheduling.html"><span class="rail-number">11</span>Choosing a scheduler: cron, in-process jobs, and durable background work</a>
+<a href="12-durable-job-operations.html"><span class="rail-number">12</span>Celery in production: broker, workers, Beat, and reliable task boundaries</a>
+<div class="rail-label">Module 5 · Containers, Linux, Monitoring &amp; Security</div>
+<a href="13-linux-systemd-deployment.html"><span class="rail-number">13</span>Linux foundations and a reliable local service</a>
+<a href="14-docker-cloud-deployment.html"><span class="rail-number">14</span>Containers and the API/PostgreSQL/Redis/worker/Beat layout</a>
+<a href="15-observability-security-launch.html"><span class="rail-number">15</span>VPS production runbook: TLS, observability, security, backups, and release safety</a></aside><div class="main">
+<div class="crumbs"><a href="../index.html">App Builder’s Workshop</a> / <a href="../index.html">Python course</a> / Chapter 08</div>
+<header class="lesson-header"><div class="eyebrow">Python Backend &amp; Automation · Module 3: Web Scraping, APIs &amp; Browser Automation</div><h1>API-first responsible scraping with policy checks and selector parsing</h1><p class="lead">This chapter connects practical Python/backend techniques to the capstone data-intake service. Work through the objectives, run the code locally, and then compare the operational notes before adapting the pattern to production.</p><div class="lesson-meta"><span>Chapter 08 of 15</span><span>Concepts · code · deployment · resilience · build</span></div></header>
+<div class="lesson-tools"><a href="#lesson-content">Jump to lesson</a><a href="#capstone-step">Jump to capstone step</a><span>Use the references at the end to go deeper.</span></div>
+<article id="lesson-content" class="lesson-content backend-lesson"><h3 id="overview-objectives-and-architecture-value">Overview, objectives, and architecture value</h3>
+<p>Sometimes permitted public data has no usable API. This chapter teaches the narrow fallback: fetch a published, public HTML page with an ordinary HTTP client and parse it with BeautifulSoup or CSS selectors. Learners will (1) document permission and data minimization; (2) check <code>robots.txt</code> and site policies before fetching; (3) enforce a hostname allowlist and safe schemes; (4) parse stable selectors with explicit limits; and (5) quarantine layout drift instead of guessing.</p>
+<p>This matters architecturally because a scraper is a dependency on another team’s presentation layer. It should be isolated behind an adapter, rate-limited, cancellable, and easy to remove when an API becomes available. HTML is untrusted input. It can include huge documents, misleading links, sensitive personal data, or content that changes without notice.</p>
+<p>Python’s <code>urllib.robotparser.RobotFileParser</code> exposes <code>can_fetch</code>, <code>crawl_delay</code>, and <code>request_rate</code> for the published robots file. <a href="https://docs.python.org/3/library/urllib.robotparser.html" target="_blank" rel="noopener noreferrer" title="Python urllib.robotparser">5</a> Robots rules are one signal, not a license: also check terms, policy, copyright/privacy obligations, contractual permission, and the owner’s contact guidance. The service must never bypass a login, CAPTCHA, paywall, robots/policy restriction, or anti-bot control.</p>
+<h3 id="ordered-topics">Ordered topics</h3>
+<ol>
+<li><strong>Authorization record.</strong> Store the owner, allowed hosts/paths, purpose, retention period, contact, and review date. Stop if permission is ambiguous.</li>
+<li><strong>Robots and terms.</strong> Fetch <code>https://host/robots.txt</code> using the declared user-agent, fail closed when the policy cannot be checked, and honor a published crawl delay. Do not infer that <code>robots.txt</code> overrides terms or law.</li>
+<li><strong>API-first decision.</strong> Search documented feeds, exports, webhooks, or APIs before HTML. Ask for a data feed rather than increasing request volume.</li>
+<li><strong>SSRF boundary.</strong> Accept only <code>https</code>; allowlist exact hostnames and path prefixes; disable redirects; cap response size and parse time; isolate egress in a worker network. OWASP recommends allowlists where destinations are known and warns about redirects and DNS/parser tricks. <a href="https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html" target="_blank" rel="noopener noreferrer" title="OWASP SSRF Prevention Cheat Sheet">6</a> Hostname checking alone is not a complete defense against DNS rebinding; production should resolve and validate addresses at connection time or use a controlled egress proxy.</li>
+<li><strong>Parsing.</strong> Select only the fields needed, normalize whitespace, validate the result, and attach source URL and retrieval timestamp. Keep a fixture HTML file for tests.</li>
+<li><strong>Drift handling.</strong> If a required selector is missing, fail loudly and quarantine the page. Never silently return an empty successful dataset.</li>
+</ol>
+<h3 id="code-blueprint-html_intakepy-development-demo">Code blueprint: <code>html_intake.py</code> (development demo)</h3>
+<p>Install with <code>pip install httpx beautifulsoup4 pydantic</code>. Set <code>ALLOWED_HOSTS=public.example.test</code>, <code>ALLOWED_PATH_PREFIX=/catalog</code>, and <code>TARGET_URL</code>. The allowlist is intentionally strict and must be replaced with a reviewed policy record, not user-controlled arbitrary URLs.</p>
+<pre><code class="language-python">from __future__ import annotations
+
+import logging
+import os
+import sqlite3
+from datetime import datetime, timezone
+from urllib.parse import urlparse
+import urllib.robotparser
+
+import httpx
+from bs4 import BeautifulSoup
+from pydantic import BaseModel, Field, ValidationError
+
+log = logging.getLogger(&quot;html_intake&quot;)
+logging.basicConfig(level=os.getenv(&quot;LOG_LEVEL&quot;, &quot;INFO&quot;))
+TARGET_URL = os.environ[&quot;TARGET_URL&quot;]
+ALLOWED_HOSTS = {h.strip().lower() for h in os.environ[&quot;ALLOWED_HOSTS&quot;].split(&quot;,&quot;)}
+PATH_PREFIX = os.getenv(&quot;ALLOWED_PATH_PREFIX&quot;, &quot;/&quot;)
+DB_PATH = os.getenv(&quot;SQLITE_PATH&quot;, &quot;intake.db&quot;)
+USER_AGENT = &quot;reliable-intake/0.1 (+mailto:data-owner@example.test)&quot;
+
+class Card(BaseModel):
+    external_id: str = Field(min_length=1, max_length=200)
+    title: str = Field(min_length=1, max_length=500)
+    source_url: str
+    fetched_at: datetime
+
+def allowed(url: str) -&gt; bool:
+    parsed = urlparse(url)
+    prefix = PATH_PREFIX.rstrip(&quot;/&quot;)
+    path_allowed = (PATH_PREFIX == &quot;/&quot; or parsed.path == prefix
+                    or parsed.path.startswith(prefix + &quot;/&quot;))
+    return (parsed.scheme == &quot;https&quot; and parsed.hostname is not None
+            and parsed.hostname.lower() in ALLOWED_HOSTS
+            and parsed.username is None and parsed.password is None
+            and path_allowed)
+
+def check_robots(url: str) -&gt; None:
+    parsed = urlparse(url)
+    robots_url = f&quot;{parsed.scheme}://{parsed.netloc}/robots.txt&quot;
+    rp = urllib.robotparser.RobotFileParser()
+    rp.set_url(robots_url)
+    # Use the same bounded HTTP client policy; RobotFileParser.read() alone
+    # does not let this adapter apply its own timeout and response-size limit.
+    timeout = httpx.Timeout(4.0, connect=2.0, read=4.0)
+    try:
+        with httpx.Client(timeout=timeout, follow_redirects=False) as client:
+            with client.stream(&quot;GET&quot;, robots_url, headers={&quot;User-Agent&quot;: USER_AGENT}) as response:
+                response.raise_for_status()
+                chunks = bytearray()
+                for chunk in response.iter_bytes():
+                    chunks.extend(chunk)
+                    if len(chunks) &gt; 256_000:
+                        raise ValueError(&quot;robots policy exceeds configured size limit&quot;)
+        rp.parse(bytes(chunks).decode(&quot;utf-8&quot;, errors=&quot;replace&quot;).splitlines())
+    except (OSError, httpx.HTTPError) as exc:
+        raise RuntimeError(&quot;robots policy unavailable; fail closed&quot;) from exc
+    if not rp.can_fetch(USER_AGENT, url):
+        raise PermissionError(&quot;robots.txt disallows this user-agent and URL&quot;)
+    delay = rp.crawl_delay(USER_AGENT) or rp.crawl_delay(&quot;*&quot;)
+    if delay:
+        log.info(&quot;policy crawl_delay=%s seconds; scheduler must enforce it&quot;, delay)
+
+def save(card: Card) -&gt; None:
+    with sqlite3.connect(DB_PATH) as db:
+        db.execute(&quot;&quot;&quot;CREATE TABLE IF NOT EXISTS html_records (
+          external_id TEXT PRIMARY KEY, title TEXT NOT NULL, source_url TEXT NOT NULL,
+          fetched_at TEXT NOT NULL)&quot;&quot;&quot;)
+        db.execute(&quot;&quot;&quot;INSERT INTO html_records VALUES (?, ?, ?, ?)
+          ON CONFLICT(external_id) DO UPDATE SET title=excluded.title,
+          source_url=excluded.source_url, fetched_at=excluded.fetched_at&quot;&quot;&quot;,
+          (card.external_id, card.title, card.source_url, card.fetched_at.isoformat()))
+
+def ingest() -&gt; int:
+    if not allowed(TARGET_URL):
+        raise PermissionError(&quot;URL is outside the reviewed HTTPS allowlist&quot;)
+    check_robots(TARGET_URL)
+    timeout = httpx.Timeout(10.0, connect=5.0, read=15.0)
+    with httpx.Client(headers={&quot;User-Agent&quot;: USER_AGENT}, timeout=timeout,
+                      follow_redirects=False) as client:
+        with client.stream(&quot;GET&quot;, TARGET_URL) as response:
+            response.raise_for_status()
+            content = bytearray()
+            for chunk in response.iter_bytes():
+                content.extend(chunk)
+                if len(content) &gt; 2_000_000:
+                    raise ValueError(&quot;response exceeds configured size limit&quot;)
+    soup = BeautifulSoup(bytes(content), &quot;html.parser&quot;)
+    cards = soup.select(&quot;article[data-id]&quot;)[:500]
+    if not cards:
+        raise ValueError(&quot;required selector returned no records; quarantine for layout review&quot;)
+    count = 0
+    for node in cards:
+        try:
+            card = Card(external_id=node[&quot;data-id&quot;],
+                        title=node.select_one(&quot;h2&quot;).get_text(&quot; &quot;, strip=True),
+                        source_url=TARGET_URL,
+                        fetched_at=datetime.now(timezone.utc))
+            save(card)
+            count += 1
+        except (KeyError, AttributeError, ValidationError) as exc:
+            log.warning(&quot;quarantined malformed card error=%s&quot;, type(exc).__name__)
+    return count
+
+if __name__ == &quot;__main__&quot;:
+    log.info(&quot;accepted_records=%s&quot;, ingest())
+</code></pre>
+<h3 id="deployment-and-operations-context">Deployment and operations context</h3>
+<p><strong>Development demo:</strong> serve a checked-in HTML fixture with a local mock server and test the parser without internet access; run policy checks in an integration test against a permitted staging host. <strong>Server:</strong> schedule one host at a time, persist the last retrieval and policy decision, and use a per-host token bucket or delay. A single process-wide sleep is not a multi-worker rate limiter. <strong>Cloud:</strong> run the parser in a restricted worker subnet with no access to cloud metadata, databases, or control-plane addresses. Store only the fields needed for the stated purpose; redact or hash identifiers where possible and set deletion jobs.</p>
+<p>Log policy decision, host, path, response status/size, selector counts, and schema errors. Do not log the HTML body by default. Do not retry a policy denial, <code>401</code>/<code>403</code>, CAPTCHA page, or parser drift. Retry transient network errors only within the owner-approved rate limit. Idempotency is the same source-key upsert pattern as Chapter 1. Credential notes are simple: this chapter should normally need no credential; adding a session cookie to defeat a gate is out of scope.</p>
+<p><span id="capstone-step"></span></p>
+<p><strong>Hands-on build step (capstone step 2):</strong> implement a <code>HtmlSourceAdapter</code> that shares the Chapter 1 <code>source_runs</code> and <code>records</code> tables. Add an approved-source registry and a fixture test that proves: disallowed hosts fail before network I/O, redirects are rejected, robots denial is recorded, a 2 MB limit is enforced, and selector drift enters <code>quarantine</code> rather than producing a false-success run. Keep the API adapter as the preferred path and make source choice explicit in the run record.</p><section class="course-references" id="references"><h2>References</h2><ol><li id="ref-5"><a href="https://docs.python.org/3/library/urllib.robotparser.html" target="_blank" rel="noopener noreferrer">Python urllib.robotparser</a></li><li id="ref-6"><a href="https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html" target="_blank" rel="noopener noreferrer">OWASP SSRF Prevention Cheat Sheet</a></li></ol></section></article>
+<button class="mark-complete" type="button" data-complete aria-pressed="false">Mark this chapter complete</button>
+<nav class="lesson-nav" aria-label="Previous and next lessons"><a href="07-http-api-clients.html"><small>Previous lesson</small><strong>← HTTPX API clients, schemas, pagination, and safe retries</strong></a><a href="09-playwright-automation.html"><small>Next lesson</small><strong>Authorized Playwright workflows and production queue boundaries →</strong></a></nav>
+</div></main><footer class="footer"><a href="../index.html">Python Backend &amp; Automation</a> · <a href="../index.html">App Builder’s Workshop</a> · Progress is local to this browser.</footer><script src="../assets/site.js" defer></script></body></html>

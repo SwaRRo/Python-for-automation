@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Chapter 13: Linux foundations and a reliable local service. A practical Python backend and automation lesson with code, deployment context, resilience, and a capstone build step.">
+<title>13 — Linux foundations and a reliable local service · Python Backend &amp; Automation</title>
+<link rel="icon" href="../assets/course-mark.svg" type="image/svg+xml">
+<script>(()=>{let saved=null;try{saved=localStorage.getItem("app-workshop-theme");}catch{}const theme=saved==="dark"||saved==="light"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;})();</script>
+<link rel="stylesheet" href="../assets/site.css"></head>
+<body data-track="python" data-chapter="python-13"><a class="skip-link" href="#main">Skip to lesson</a>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="../index.html"><img src="../assets/course-mark.svg" alt=""><span>App Builder’s Workshop</span></a><nav class="topnav" aria-label="Main navigation"><a href="../index.html">Python course map</a><button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode: off</button></nav></div></header>
+<div class="reading-progress" aria-hidden="true"><span data-reading-progress></span></div>
+<main id="main" class="layout"><aside class="rail" aria-label="Python lesson navigation"><div class="rail-label">Python · 15 chapters</div>
+<a href="../index.html"><span class="rail-number">⌂</span>Workshop home</a>
+<a href="../index.html"><span class="rail-number">◎</span>Python course map</a>
+<div class="rail-label">Module 1 · Advanced Python Logic &amp; Data Wrangling</div>
+<a href="01-domain-logic.html"><span class="rail-number">01</span>Model the domain before the endpoint</a>
+<a href="02-control-flow-boundaries.html"><span class="rail-number">02</span>Wrangle CSV/JSON safely and cross the repository boundary</a>
+<a href="03-data-wrangling.html"><span class="rail-number">03</span>Make processing transactional, observable, and deployable</a>
+<div class="rail-label">Module 2 · Robust Scripting, Files &amp; Automation</div>
+<a href="04-cli-configuration.html"><span class="rail-number">04</span>Contract-first CLI, configuration, and durable file intake</a>
+<a href="05-durable-file-pipelines.html"><span class="rail-number">05</span>Safe local subprocesses and authorized SSH/SFTP automation</a>
+<a href="06-remote-automation.html"><span class="rail-number">06</span>Queue boundaries, operational deployment, and production promotion</a>
+<div class="rail-label">Module 3 · Web Scraping, APIs &amp; Browser Automation</div>
+<a href="07-http-api-clients.html"><span class="rail-number">07</span>HTTPX API clients, schemas, pagination, and safe retries</a>
+<a href="08-responsible-scraping.html"><span class="rail-number">08</span>API-first responsible scraping with policy checks and selector parsing</a>
+<a href="09-playwright-automation.html"><span class="rail-number">09</span>Authorized Playwright workflows and production queue boundaries</a>
+<div class="rail-label">Module 4 · Asyncio, Scheduling &amp; Background Queues</div>
+<a href="10-asyncio-concurrency.html"><span class="rail-number">10</span>Async foundations: event loops, cancellation, and backpressure</a>
+<a href="11-celery-scheduling.html"><span class="rail-number">11</span>Choosing a scheduler: cron, in-process jobs, and durable background work</a>
+<a href="12-durable-job-operations.html"><span class="rail-number">12</span>Celery in production: broker, workers, Beat, and reliable task boundaries</a>
+<div class="rail-label">Module 5 · Containers, Linux, Monitoring &amp; Security</div>
+<a href="13-linux-systemd-deployment.html" aria-current="page"><span class="rail-number">13</span>Linux foundations and a reliable local service</a>
+<a href="14-docker-cloud-deployment.html"><span class="rail-number">14</span>Containers and the API/PostgreSQL/Redis/worker/Beat layout</a>
+<a href="15-observability-security-launch.html"><span class="rail-number">15</span>VPS production runbook: TLS, observability, security, backups, and release safety</a></aside><div class="main">
+<div class="crumbs"><a href="../index.html">App Builder’s Workshop</a> / <a href="../index.html">Python course</a> / Chapter 13</div>
+<header class="lesson-header"><div class="eyebrow">Python Backend &amp; Automation · Module 5: Containers, Linux, Monitoring &amp; Security</div><h1>Linux foundations and a reliable local service</h1><p class="lead">This chapter connects practical Python/backend techniques to the capstone data-intake service. Work through the objectives, run the code locally, and then compare the operational notes before adapting the pattern to production.</p><div class="lesson-meta"><span>Chapter 13 of 15</span><span>Concepts · code · deployment · resilience · build</span></div></header>
+<div class="lesson-tools"><a href="#lesson-content">Jump to lesson</a><a href="#capstone-step">Jump to capstone step</a><span>Use the references at the end to go deeper.</span></div>
+<article id="lesson-content" class="lesson-content backend-lesson"><h3 id="overview-objectives-and-why-this-matters">Overview, objectives, and why this matters</h3>
+<p>A production API is a set of processes with identities, files, ports, startup rules, and failure behavior—not merely Python code. Learners create a non-root user, reason about permissions, run a supervised process, and build RDIPS with SQLite and a mock queue. This is a <strong>development demo</strong>; the production boundary is explicit.</p>
+<p>The architecture is: client → API → durable intake row → queue → worker → processed result. SQLite is a useful prototype because it is a disk database with no separate server and can later be ported to PostgreSQL, but it is not a substitute for a multi-client production database <a href="https://docs.python.org/3/library/sqlite3.html" target="_blank" rel="noopener noreferrer" title="Python sqlite3 — DB-API 2.0 interface for SQLite databases">1</a>. A queue gives the API a short response path and lets workers retry independently. Do not promise exactly-once delivery: the worker can crash after the side effect and before acknowledgement, so design the operation to be idempotent.</p>
+<p><strong>Learning objectives:</strong> (1) inspect users, groups, modes, ownership, and least privilege; (2) write a systemd service and timer; (3) implement logs, timeouts, health/readiness, and idempotency; (4) test failure/restart behavior; and (5) explain why production replaces SQLite and the local queue.</p>
+<h3 id="ordered-topics">Ordered topics</h3>
+<ol>
+<li><strong>Linux identity and files.</strong> Create a dedicated <code>rdips</code> user with no interactive shell; keep code readable by that user, data writable only in <code>/var/lib/rdips</code>, and secrets outside the repository. Use <code>chmod</code>, <code>chown</code>, and <code>umask</code> deliberately. Never run the API as root.</li>
+<li><strong>Processes and supervision.</strong> Run the app in the foreground. A <code>.service</code> unit has <code>[Unit]</code>, <code>[Service]</code>, and <code>[Install]</code>; <code>ExecStart</code> names the process, and <code>Restart=on-failure</code> delegates recovery to systemd. systemd documents service units as processes it controls and supervises <a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html" target="_blank" rel="noopener noreferrer" title="systemd.service — Service unit configuration">2</a>.</li>
+<li><strong>Timers.</strong> A <code>.timer</code> activates a matching <code>.service</code>; <code>OnCalendar=</code> is wall-clock based and is subject to timer accuracy, so scheduled work must be safe to run late or twice <a href="https://man7.org/linux/man-pages/man5/systemd.timer.5.html" target="_blank" rel="noopener noreferrer" title="systemd.timer(5) — timer unit configuration">3</a>. Use a timer for cleanup or backup, not as a substitute for a durable queue.</li>
+<li><strong>Application contract.</strong> <code>POST /intake</code> requires an idempotency key. <code>/healthz</code> means the process is alive; <code>/readyz</code> checks that the database is usable. Log event name, request id, job id, duration, and outcome, but never payload secrets.</li>
+<li><strong>Authorized sources only.</strong> Permit only documented, authorized upstream APIs and respect terms, authentication, rate limits, and access controls; this course does not teach bypasses or anti-bot evasion.</li>
+</ol>
+<h3 id="code-blueprint-local-sqlite-mock-queue">Code blueprint: local SQLite + mock queue</h3>
+<p>Save as <code>app.py</code>; install <code>fastapi</code> and an ASGI server, then run <code>uvicorn app:app --host 127.0.0.1 --port 8000</code>. <code>DB_PATH</code> defaults to <code>./rdips.db</code>.</p>
+<pre><code class="language-python">from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+import hashlib, json, logging, os, queue, sqlite3, threading, time, uuid
+from typing import Any
+from fastapi import FastAPI, Header, HTTPException, Response
+from pydantic import BaseModel, Field
+
+DB_PATH = os.getenv(&quot;DB_PATH&quot;, &quot;./rdips.db&quot;)
+JOBS: queue.Queue[str] = queue.Queue()
+STOP = threading.Event()
+logging.basicConfig(level=os.getenv(&quot;LOG_LEVEL&quot;, &quot;INFO&quot;), format=&quot;%(message)s&quot;)
+log = logging.getLogger(&quot;rdips&quot;)
+
+class Intake(BaseModel):
+    source: str = Field(min_length=1, max_length=120)
+    data: dict[str, Any]
+
+
+def now() -&gt; str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def db() -&gt; sqlite3.Connection:
+    con = sqlite3.connect(DB_PATH, timeout=5)
+    con.row_factory = sqlite3.Row
+    con.execute(&quot;PRAGMA busy_timeout=5000&quot;)
+    return con
+
+
+def init_db() -&gt; None:
+    with db() as con:
+        con.execute(&quot;&quot;&quot;CREATE TABLE IF NOT EXISTS jobs (
+          id TEXT PRIMARY KEY, idem TEXT NOT NULL UNIQUE, source TEXT NOT NULL,
+          payload TEXT NOT NULL, status TEXT NOT NULL, result TEXT,
+          created_at TEXT NOT NULL, updated_at TEXT NOT NULL)&quot;&quot;&quot;)
+
+
+def worker() -&gt; None:
+    while not STOP.is_set():
+        try: job_id = JOBS.get(timeout=0.5)
+        except queue.Empty: continue
+        try:
+            with db() as con:
+                row = con.execute(&quot;SELECT payload,status FROM jobs WHERE id=?&quot;, (job_id,)).fetchone()
+                if not row or row[&quot;status&quot;] == &quot;done&quot;: continue  # idempotent replay
+                con.execute(&quot;UPDATE jobs SET status='processing',updated_at=? WHERE id=?&quot;, (now(), job_id))
+                payload = json.loads(row[&quot;payload&quot;])
+                # Replace this deterministic demo with an authorized API call or transform.
+                digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+                con.execute(&quot;UPDATE jobs SET status='done',result=?,updated_at=? WHERE id=?&quot;,
+                            (json.dumps({&quot;sha256&quot;: digest}), now(), job_id))
+                log.info(json.dumps({&quot;event&quot;:&quot;job_done&quot;, &quot;job_id&quot;:job_id}))
+        except Exception:
+            log.exception(&quot;job_failed job_id=%s&quot;, job_id)
+            with db() as con: con.execute(&quot;UPDATE jobs SET status='failed',updated_at=? WHERE id=?&quot;, (now(), job_id))
+        finally: JOBS.task_done()
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    init_db(); t = threading.Thread(target=worker, daemon=True); t.start()
+    yield; STOP.set(); t.join(timeout=2)
+
+app = FastAPI(title=&quot;RDIPS&quot;, lifespan=lifespan)
+
+@app.get(&quot;/healthz&quot;)
+def health() -&gt; dict[str, str]: return {&quot;status&quot;: &quot;ok&quot;}
+
+@app.get(&quot;/readyz&quot;)
+def ready() -&gt; dict[str, str]:
+    try:
+        with db() as con: con.execute(&quot;SELECT 1&quot;).fetchone()
+        return {&quot;status&quot;: &quot;ready&quot;}
+    except sqlite3.Error as exc:
+        raise HTTPException(503, &quot;database unavailable&quot;) from exc
+
+@app.post(&quot;/intake&quot;, status_code=202)
+def intake(item: Intake, response: Response, idempotency_key: str | None = Header(default=None)):
+    if not idempotency_key: raise HTTPException(400, &quot;Idempotency-Key is required&quot;)
+    job_id = str(uuid.uuid4())
+    try:
+        with db() as con:
+            con.execute(&quot;INSERT INTO jobs VALUES (?,?,?,?,?,?,?,?)&quot;,
+              (job_id, idempotency_key, item.source, item.model_dump_json(), &quot;queued&quot;, None, now(), now()))
+    except sqlite3.IntegrityError:
+        with db() as con:
+            row = con.execute(&quot;SELECT id,status FROM jobs WHERE idem=?&quot;, (idempotency_key,)).fetchone()
+        response.status_code = 200
+        return dict(row)
+    JOBS.put(job_id); log.info(json.dumps({&quot;event&quot;:&quot;accepted&quot;, &quot;job_id&quot;:job_id}))
+    return {&quot;id&quot;: job_id, &quot;status&quot;: &quot;queued&quot;}
+
+@app.get(&quot;/jobs/{job_id}&quot;)
+def job(job_id: str):
+    with db() as con: row = con.execute(&quot;SELECT id,status,result FROM jobs WHERE id=?&quot;, (job_id,)).fetchone()
+    if not row: raise HTTPException(404, &quot;job not found&quot;)
+    return dict(row)
+
+@app.get(&quot;/metrics&quot;)
+def metrics():
+    with db() as con:
+        counts = con.execute(&quot;SELECT status,count(*) n FROM jobs GROUP BY status&quot;).fetchall()
+    body = &quot;&quot;.join(f'rdips_jobs{{status=&quot;{r[&quot;status&quot;]}&quot;}} {r[&quot;n&quot;]}\n' for r in counts)
+    return Response(body, media_type=&quot;text/plain; version=0.0.4&quot;)
+</code></pre>
+<p>The SQL uses placeholders, as Python recommends to prevent injection <a href="https://docs.python.org/3/library/sqlite3.html" target="_blank" rel="noopener noreferrer" title="Python sqlite3 — DB-API 2.0 interface for SQLite databases">1</a>. HTTPX integrations should set explicit connect/read/write/pool timeouts; its default is five seconds of network inactivity <a href="https://www.python-httpx.org/advanced/timeouts/" target="_blank" rel="noopener noreferrer" title="HTTPX timeouts">4</a>. Production replaces <code>queue.Queue</code> with Celery/Redis or a cloud queue and stores a unique job key in PostgreSQL.</p>
+<p><span id="capstone-step"></span></p>
+<h3 id="localserver-operations-failures-and-build-step">Local/server operations, failures, and build step</h3>
+<p><strong>Local:</strong> run the app, submit twice with the same <code>Idempotency-Key</code>, kill it during processing, restart it, and observe that the local queue loses unstarted jobs. That loss is an intentional lesson. <strong>Server:</strong> create <code>/etc/systemd/system/rdips.service</code>:</p>
+<pre><code class="language-ini">[Unit]
+Description=RDIPS API (development-style host service)
+After=network.target
+[Service]
+User=rdips
+WorkingDirectory=/opt/rdips
+ExecStart=/opt/rdips/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+[Install]
+WantedBy=multi-user.target
+</code></pre>
+<p>Use <code>systemctl daemon-reload &amp;&amp; systemctl enable --now rdips</code>, and <code>journalctl -u rdips -f</code>. Retries must be bounded with backoff; classify 4xx as usually non-retryable and timeouts/5xx as retryable. Never log tokens, database URLs, or raw sensitive payloads. <strong>Hands-on build:</strong> add a <code>cleanup.service</code> (<code>Type=oneshot</code>) and matching <code>cleanup.timer</code> for old demo rows. Verify <code>systemctl list-timers</code>, then document why production cleanup needs retention and backup checks.</p><section class="course-references" id="references"><h2>References</h2><ol><li id="ref-1"><a href="https://docs.python.org/3/library/sqlite3.html" target="_blank" rel="noopener noreferrer">Python sqlite3 — DB-API 2.0 interface for SQLite databases</a></li><li id="ref-2"><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html" target="_blank" rel="noopener noreferrer">systemd.service — Service unit configuration</a></li><li id="ref-3"><a href="https://man7.org/linux/man-pages/man5/systemd.timer.5.html" target="_blank" rel="noopener noreferrer">systemd.timer(5) — timer unit configuration</a></li><li id="ref-4"><a href="https://www.python-httpx.org/advanced/timeouts/" target="_blank" rel="noopener noreferrer">HTTPX timeouts</a></li></ol></section></article>
+<button class="mark-complete" type="button" data-complete aria-pressed="false">Mark this chapter complete</button>
+<nav class="lesson-nav" aria-label="Previous and next lessons"><a href="12-durable-job-operations.html"><small>Previous lesson</small><strong>← Celery in production: broker, workers, Beat, and reliable task boundaries</strong></a><a href="14-docker-cloud-deployment.html"><small>Next lesson</small><strong>Containers and the API/PostgreSQL/Redis/worker/Beat layout →</strong></a></nav>
+</div></main><footer class="footer"><a href="../index.html">Python Backend &amp; Automation</a> · <a href="../index.html">App Builder’s Workshop</a> · Progress is local to this browser.</footer><script src="../assets/site.js" defer></script></body></html>

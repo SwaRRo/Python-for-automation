@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Chapter 12: Celery in production: broker, workers, Beat, and reliable task boundaries. A practical Python backend and automation lesson with code, deployment context, resilience, and a capstone build step.">
+<title>12 — Celery in production: broker, workers, Beat, and reliable task boundaries · Python Backend &amp; Automation</title>
+<link rel="icon" href="../assets/course-mark.svg" type="image/svg+xml">
+<script>(()=>{let saved=null;try{saved=localStorage.getItem("app-workshop-theme");}catch{}const theme=saved==="dark"||saved==="light"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;})();</script>
+<link rel="stylesheet" href="../assets/site.css"></head>
+<body data-track="python" data-chapter="python-12"><a class="skip-link" href="#main">Skip to lesson</a>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="../index.html"><img src="../assets/course-mark.svg" alt=""><span>App Builder’s Workshop</span></a><nav class="topnav" aria-label="Main navigation"><a href="../index.html">Python course map</a><button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode: off</button></nav></div></header>
+<div class="reading-progress" aria-hidden="true"><span data-reading-progress></span></div>
+<main id="main" class="layout"><aside class="rail" aria-label="Python lesson navigation"><div class="rail-label">Python · 15 chapters</div>
+<a href="../index.html"><span class="rail-number">⌂</span>Workshop home</a>
+<a href="../index.html"><span class="rail-number">◎</span>Python course map</a>
+<div class="rail-label">Module 1 · Advanced Python Logic &amp; Data Wrangling</div>
+<a href="01-domain-logic.html"><span class="rail-number">01</span>Model the domain before the endpoint</a>
+<a href="02-control-flow-boundaries.html"><span class="rail-number">02</span>Wrangle CSV/JSON safely and cross the repository boundary</a>
+<a href="03-data-wrangling.html"><span class="rail-number">03</span>Make processing transactional, observable, and deployable</a>
+<div class="rail-label">Module 2 · Robust Scripting, Files &amp; Automation</div>
+<a href="04-cli-configuration.html"><span class="rail-number">04</span>Contract-first CLI, configuration, and durable file intake</a>
+<a href="05-durable-file-pipelines.html"><span class="rail-number">05</span>Safe local subprocesses and authorized SSH/SFTP automation</a>
+<a href="06-remote-automation.html"><span class="rail-number">06</span>Queue boundaries, operational deployment, and production promotion</a>
+<div class="rail-label">Module 3 · Web Scraping, APIs &amp; Browser Automation</div>
+<a href="07-http-api-clients.html"><span class="rail-number">07</span>HTTPX API clients, schemas, pagination, and safe retries</a>
+<a href="08-responsible-scraping.html"><span class="rail-number">08</span>API-first responsible scraping with policy checks and selector parsing</a>
+<a href="09-playwright-automation.html"><span class="rail-number">09</span>Authorized Playwright workflows and production queue boundaries</a>
+<div class="rail-label">Module 4 · Asyncio, Scheduling &amp; Background Queues</div>
+<a href="10-asyncio-concurrency.html"><span class="rail-number">10</span>Async foundations: event loops, cancellation, and backpressure</a>
+<a href="11-celery-scheduling.html"><span class="rail-number">11</span>Choosing a scheduler: cron, in-process jobs, and durable background work</a>
+<a href="12-durable-job-operations.html" aria-current="page"><span class="rail-number">12</span>Celery in production: broker, workers, Beat, and reliable task boundaries</a>
+<div class="rail-label">Module 5 · Containers, Linux, Monitoring &amp; Security</div>
+<a href="13-linux-systemd-deployment.html"><span class="rail-number">13</span>Linux foundations and a reliable local service</a>
+<a href="14-docker-cloud-deployment.html"><span class="rail-number">14</span>Containers and the API/PostgreSQL/Redis/worker/Beat layout</a>
+<a href="15-observability-security-launch.html"><span class="rail-number">15</span>VPS production runbook: TLS, observability, security, backups, and release safety</a></aside><div class="main">
+<div class="crumbs"><a href="../index.html">App Builder’s Workshop</a> / <a href="../index.html">Python course</a> / Chapter 12</div>
+<header class="lesson-header"><div class="eyebrow">Python Backend &amp; Automation · Module 4: Asyncio, Scheduling &amp; Background Queues</div><h1>Celery in production: broker, workers, Beat, and reliable task boundaries</h1><p class="lead">This chapter connects practical Python/backend techniques to the capstone data-intake service. Work through the objectives, run the code locally, and then compare the operational notes before adapting the pattern to production.</p><div class="lesson-meta"><span>Chapter 12 of 15</span><span>Concepts · code · deployment · resilience · build</span></div></header>
+<div class="lesson-tools"><a href="#lesson-content">Jump to lesson</a><a href="#capstone-step">Jump to capstone step</a><span>Use the references at the end to go deeper.</span></div>
+<article id="lesson-content" class="lesson-content backend-lesson"><h3 id="overview-objectives-and-architectural-importance">Overview, objectives, and architectural importance</h3>
+<p>Learners will trace producer→broker→worker flow, separate Beat from execution, configure retries/acks/visibility/time limits/DLQs, and design a PostgreSQL-safe task boundary. Celery acknowledges before execution by default; late-acked tasks can be redelivered after a worker dies <a href="https://docs.celeryq.dev/en/stable/userguide/tasks.html" target="_blank" rel="noopener noreferrer" title="Celery Tasks">5</a>.</p>
+<p>Celery Beat publishes periodic tasks; available workers execute them. Celery’s docs require only one scheduler for a schedule or duplicate tasks result <a href="https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html" target="_blank" rel="noopener noreferrer" title="Amazon SQS dead-letter queues">10</a>. Beat is not a lock, and a periodic task can overlap itself, so use a database lease or idempotency key. Celery’s retry creates another message with the same task ID <a href="https://docs.celeryq.dev/en/stable/userguide/tasks.html" target="_blank" rel="noopener noreferrer" title="Celery Tasks">5</a>; it is not a guarantee of one side effect.</p>
+<h3 id="ordered-topics">Ordered topics</h3>
+<ol>
+<li><strong>Broker and workers.</strong> The broker carries messages; workers execute them. A result backend is optional, not a business database; persist authoritative status in PostgreSQL.</li>
+<li><strong>Task boundary.</strong> Send <code>{job_id}</code> and immutable metadata, not a file blob or secret. The worker loads the row, claims it, performs authorized I/O, and commits an idempotent result.</li>
+<li><strong>Retry policy.</strong> Retry transient network/5xx/connection failures with capped backoff and jitter, not validation or authorization failures. Cap attempts and quarantine exhausted work.</li>
+<li><strong>Acknowledgement and visibility.</strong> <code>acks_late=True</code> acknowledges after execution, which can cause duplicate execution after a crash; enable only for idempotent work. A visibility timeout must exceed normal processing plus margin, or the broker may redeliver while work is still running. Celery exposes broker transport visibility settings <a href="https://docs.celeryq.dev/en/stable/userguide/tasks.html" target="_blank" rel="noopener noreferrer" title="Celery Tasks">5</a>.</li>
+<li><strong>Time limits and prefetch.</strong> Put explicit HTTP/database timeouts in code. Soft limits allow cleanup; hard limits terminate a worker process, so they are a last guard, not a substitute for I/O timeouts <a href="https://docs.celeryq.dev/en/stable/userguide/tasks.html" target="_blank" rel="noopener noreferrer" title="Celery Tasks">5</a>. Tune prefetch for long tasks; monitor queue age.</li>
+<li><strong>Dead letters and operations.</strong> Configure a DLQ, alarm on depth/oldest age, inspect safely, fix the cause, and replay a controlled attempt. Provider delivery, retention, ordering, and IAM semantics differ.</li>
+</ol>
+<h3 id="complete-near-runnable-celery-blueprint-development-to-production-shape">Complete near-runnable Celery blueprint (development-to-production shape)</h3>
+<p><strong>Development assumptions:</strong> a reachable Redis broker at <code>redis://localhost:6379/0</code>, SQLite for demonstration, and Celery installed in the virtual environment. <strong>Production replacement:</strong> PostgreSQL URL, TLS broker, secret manager, and a configured DLQ. Save as <code>celery_app.py</code>; start <code>celery -A celery_app worker --loglevel=INFO</code> and, separately, <code>celery -A celery_app beat --loglevel=INFO</code>.</p>
+<pre><code class="language-python">from __future__ import annotations
+import os, sqlite3, time, logging
+from celery import Celery
+from celery.exceptions import SoftTimeLimitExceeded
+
+BROKER = os.environ.get(&quot;CELERY_BROKER_URL&quot;, &quot;redis://localhost:6379/0&quot;)
+app = Celery(&quot;intake&quot;, broker=BROKER)  # Add result_backend only if task state is needed.
+app.conf.update(
+    task_serializer=&quot;json&quot;, accept_content=[&quot;json&quot;], timezone=&quot;UTC&quot;, enable_utc=True,
+    task_acks_late=True, task_reject_on_worker_lost=True,
+    task_soft_time_limit=45, task_time_limit=60,
+    broker_transport_options={&quot;visibility_timeout&quot;: 120},
+    worker_prefetch_multiplier=1,
+    beat_schedule={&quot;reconcile-every-minute&quot;: {
+        &quot;task&quot;: &quot;celery_app.reconcile&quot;, &quot;schedule&quot;: 60.0,
+    }},
+)
+log = logging.getLogger(__name__)
+DB = os.environ.get(&quot;INTAKE_DB&quot;, &quot;intake-demo.db&quot;)
+
+def claim(job_id: str) -&gt; bool:
+    # Production: one PostgreSQL transaction with SELECT ... FOR UPDATE SKIP LOCKED,
+    # or an atomic UPDATE guarded by status and a lease expiry.
+    with sqlite3.connect(DB) as con:
+        cur = con.execute(&quot;UPDATE jobs SET status='processing' WHERE job_id=? AND status='queued'&quot;, (job_id,))
+        con.commit(); return cur.rowcount == 1
+
+def release_for_retry(job_id: str) -&gt; None:
+    # Handles a caught/graceful failure. A hard process kill cannot run this;
+    # production must reclaim expired processing leases during reconciliation.
+    with sqlite3.connect(DB) as con:
+        con.execute(&quot;UPDATE jobs SET status='queued' WHERE job_id=? AND status='processing'&quot;, (job_id,))
+        con.commit()
+
+def complete(job_id: str, result: str) -&gt; None:
+    with sqlite3.connect(DB) as con:
+        con.execute(&quot;UPDATE jobs SET status='done', result=? WHERE job_id=?&quot;, (result, job_id)); con.commit()
+
+@app.task(bind=True, autoretry_for=(TimeoutError, ConnectionError), retry_backoff=True,
+          retry_jitter=True, max_retries=5, acks_late=True)
+def process_intake(self, job_id: str, source_url: str) -&gt; str:
+    if not source_url.startswith(&quot;https://api.example.test/&quot;):
+        raise ValueError(&quot;unapproved source&quot;)  # permanent: no retry
+    if not claim(job_id):
+        log.info(&quot;duplicate_or_already_claimed job_id=%s&quot;, job_id)
+        return &quot;already-claimed-or-complete&quot;
+    try:
+        # Replace mock with an authorized HTTP client and explicit connect/read timeout.
+        time.sleep(0.1)
+        complete(job_id, &quot;validated mock payload&quot;)
+        log.info(&quot;processed job_id=%s task_id=%s&quot;, job_id, self.request.id)
+        return &quot;done&quot;
+    except SoftTimeLimitExceeded:
+        log.warning(&quot;soft_timeout job_id=%s&quot;, job_id)
+        release_for_retry(job_id)
+        raise
+    except Exception:
+        log.exception(&quot;failed job_id=%s attempt=%s&quot;, job_id, self.request.retries)
+        release_for_retry(job_id)
+        raise
+
+@app.task
+def reconcile() -&gt; int:
+    # Beat only triggers; it should enqueue/recover bounded work, not do heavy work.
+    # This local demo requeues only rows still marked queued. Production also
+    # expires/reclaims processing rows whose lease_until has elapsed.
+    with sqlite3.connect(DB) as con:
+        rows = con.execute(&quot;SELECT job_id, source_url FROM jobs WHERE status='queued' LIMIT 100&quot;).fetchall()
+    for job_id, url in rows:
+        process_intake.delay(job_id, url)
+    return len(rows)
+</code></pre>
+<p><code>autoretry_for</code> is intentionally narrow; classify exceptions and make updates idempotent. A crash after <code>complete()</code> but before acknowledgement may redeliver; the guarded claim makes the second run a no-op. Add a PostgreSQL <code>UNIQUE</code> external identity and atomic state machine, but do not call this exactly once: a crash can split an external side effect from local commit. Use an outbox, external idempotency key, or compensation.</p>
+<h3 id="deployment-and-operations-context">Deployment and operations context</h3>
+<p><strong>Local:</strong> run Redis and the app with Compose healthchecks <a href="https://docs.docker.com/compose/how-tos/startup-order/" target="_blank" rel="noopener noreferrer" title="Docker Compose startup order">7</a>. <strong>Server:</strong> run API, worker, and one Beat separately; use container restart policies <a href="https://docs.docker.com/engine/containers/start-containers-automatically/" target="_blank" rel="noopener noreferrer" title="Docker Start containers automatically">6</a>. <strong>Production:</strong> use PostgreSQL, a durable or managed broker, and separate I/O/CPU worker pools. Use TLS, rotated credentials, least privilege, JSON serialization, and alerts for queue age, crashes, retries, DLQ, runtime, and DB contention. SQS uses <code>maxReceiveCount</code> and operator redrive <a href="https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html" target="_blank" rel="noopener noreferrer" title="Amazon SQS dead-letter queues">10</a>; Google/Azure semantics differ <a href="https://learn.microsoft.com/en-us/azure/service-bus-messaging/service-bus-dead-letter-queues" target="_blank" rel="noopener noreferrer" title="Azure Service Bus dead-letter queues">11</a>.</p>
+<h3 id="failure-logging-retry-idempotency-and-security-notes">Failure, logging, retry, idempotency, and security notes</h3>
+<p>A broker outage can make publishing fail; expose an outbox backlog metric and reconcile. A worker kill can duplicate work; late acknowledgement improves loss behavior only when effects are idempotent. A too-short visibility timeout causes concurrent duplicates; a too-long one delays recovery. A hard time limit can terminate a process without application cleanup. A poison message needs a bounded retry and quarantine, not infinite retry. Correlate HTTP request ID, <code>job_id</code>, Celery task ID, attempt, queue, and source; emit JSON logs and traces. Redact URLs containing query secrets and all credentials. Enforce source allow-lists and response-size/time limits, and fetch only from authorized APIs. Review broker ACLs so producers cannot consume admin/DLQ queues.</p>
+<p><span id="capstone-step"></span></p>
+<h3 id="hands-on-build-step">Hands-on build step</h3>
+<p>Replace <code>BackgroundTasks</code> with <code>process_intake.delay(job_id, source_url)</code>. Add PostgreSQL <code>jobs(job_id primary key, external_key unique, status, attempts, lease_until, result, created_at, updated_at)</code>. Kill a worker during processing and verify redelivery produces one final result; send a poison payload, verify bounded retries/DLQ alert, then replay after fixing validation. The capstone now has an API, durable state, reconciliation, scalable workers, and honest at-least-once semantics.</p><section class="course-references" id="references"><h2>References</h2><ol><li id="ref-5"><a href="https://docs.celeryq.dev/en/stable/userguide/tasks.html" target="_blank" rel="noopener noreferrer">Celery Tasks</a></li><li id="ref-6"><a href="https://docs.docker.com/engine/containers/start-containers-automatically/" target="_blank" rel="noopener noreferrer">Docker Start containers automatically</a></li><li id="ref-7"><a href="https://docs.docker.com/compose/how-tos/startup-order/" target="_blank" rel="noopener noreferrer">Docker Compose startup order</a></li><li id="ref-10"><a href="https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html" target="_blank" rel="noopener noreferrer">Amazon SQS dead-letter queues</a></li><li id="ref-11"><a href="https://cloud.google.com/pubsub/docs/dead-letter-topics" target="_blank" rel="noopener noreferrer">Google Cloud Pub/Sub dead-letter topics</a></li><li id="ref-12"><a href="https://learn.microsoft.com/en-us/azure/service-bus-messaging/service-bus-dead-letter-queues" target="_blank" rel="noopener noreferrer">Azure Service Bus dead-letter queues</a></li></ol></section></article>
+<button class="mark-complete" type="button" data-complete aria-pressed="false">Mark this chapter complete</button>
+<nav class="lesson-nav" aria-label="Previous and next lessons"><a href="11-celery-scheduling.html"><small>Previous lesson</small><strong>← Choosing a scheduler: cron, in-process jobs, and durable background work</strong></a><a href="13-linux-systemd-deployment.html"><small>Next lesson</small><strong>Linux foundations and a reliable local service →</strong></a></nav>
+</div></main><footer class="footer"><a href="../index.html">Python Backend &amp; Automation</a> · <a href="../index.html">App Builder’s Workshop</a> · Progress is local to this browser.</footer><script src="../assets/site.js" defer></script></body></html>

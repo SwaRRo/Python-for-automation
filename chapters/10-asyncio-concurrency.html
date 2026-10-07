@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Chapter 10: Async foundations: event loops, cancellation, and backpressure. A practical Python backend and automation lesson with code, deployment context, resilience, and a capstone build step.">
+<title>10 — Async foundations: event loops, cancellation, and backpressure · Python Backend &amp; Automation</title>
+<link rel="icon" href="../assets/course-mark.svg" type="image/svg+xml">
+<script>(()=>{let saved=null;try{saved=localStorage.getItem("app-workshop-theme");}catch{}const theme=saved==="dark"||saved==="light"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;})();</script>
+<link rel="stylesheet" href="../assets/site.css"></head>
+<body data-track="python" data-chapter="python-10"><a class="skip-link" href="#main">Skip to lesson</a>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="../index.html"><img src="../assets/course-mark.svg" alt=""><span>App Builder’s Workshop</span></a><nav class="topnav" aria-label="Main navigation"><a href="../index.html">Python course map</a><button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode: off</button></nav></div></header>
+<div class="reading-progress" aria-hidden="true"><span data-reading-progress></span></div>
+<main id="main" class="layout"><aside class="rail" aria-label="Python lesson navigation"><div class="rail-label">Python · 15 chapters</div>
+<a href="../index.html"><span class="rail-number">⌂</span>Workshop home</a>
+<a href="../index.html"><span class="rail-number">◎</span>Python course map</a>
+<div class="rail-label">Module 1 · Advanced Python Logic &amp; Data Wrangling</div>
+<a href="01-domain-logic.html"><span class="rail-number">01</span>Model the domain before the endpoint</a>
+<a href="02-control-flow-boundaries.html"><span class="rail-number">02</span>Wrangle CSV/JSON safely and cross the repository boundary</a>
+<a href="03-data-wrangling.html"><span class="rail-number">03</span>Make processing transactional, observable, and deployable</a>
+<div class="rail-label">Module 2 · Robust Scripting, Files &amp; Automation</div>
+<a href="04-cli-configuration.html"><span class="rail-number">04</span>Contract-first CLI, configuration, and durable file intake</a>
+<a href="05-durable-file-pipelines.html"><span class="rail-number">05</span>Safe local subprocesses and authorized SSH/SFTP automation</a>
+<a href="06-remote-automation.html"><span class="rail-number">06</span>Queue boundaries, operational deployment, and production promotion</a>
+<div class="rail-label">Module 3 · Web Scraping, APIs &amp; Browser Automation</div>
+<a href="07-http-api-clients.html"><span class="rail-number">07</span>HTTPX API clients, schemas, pagination, and safe retries</a>
+<a href="08-responsible-scraping.html"><span class="rail-number">08</span>API-first responsible scraping with policy checks and selector parsing</a>
+<a href="09-playwright-automation.html"><span class="rail-number">09</span>Authorized Playwright workflows and production queue boundaries</a>
+<div class="rail-label">Module 4 · Asyncio, Scheduling &amp; Background Queues</div>
+<a href="10-asyncio-concurrency.html" aria-current="page"><span class="rail-number">10</span>Async foundations: event loops, cancellation, and backpressure</a>
+<a href="11-celery-scheduling.html"><span class="rail-number">11</span>Choosing a scheduler: cron, in-process jobs, and durable background work</a>
+<a href="12-durable-job-operations.html"><span class="rail-number">12</span>Celery in production: broker, workers, Beat, and reliable task boundaries</a>
+<div class="rail-label">Module 5 · Containers, Linux, Monitoring &amp; Security</div>
+<a href="13-linux-systemd-deployment.html"><span class="rail-number">13</span>Linux foundations and a reliable local service</a>
+<a href="14-docker-cloud-deployment.html"><span class="rail-number">14</span>Containers and the API/PostgreSQL/Redis/worker/Beat layout</a>
+<a href="15-observability-security-launch.html"><span class="rail-number">15</span>VPS production runbook: TLS, observability, security, backups, and release safety</a></aside><div class="main">
+<div class="crumbs"><a href="../index.html">App Builder’s Workshop</a> / <a href="../index.html">Python course</a> / Chapter 10</div>
+<header class="lesson-header"><div class="eyebrow">Python Backend &amp; Automation · Module 4: Asyncio, Scheduling &amp; Background Queues</div><h1>Async foundations: event loops, cancellation, and backpressure</h1><p class="lead">This chapter connects practical Python/backend techniques to the capstone data-intake service. Work through the objectives, run the code locally, and then compare the operational notes before adapting the pattern to production.</p><div class="lesson-meta"><span>Chapter 10 of 15</span><span>Concepts · code · deployment · resilience · build</span></div></header>
+<div class="lesson-tools"><a href="#lesson-content">Jump to lesson</a><a href="#capstone-step">Jump to capstone step</a><span>Use the references at the end to go deeper.</span></div>
+<article id="lesson-content" class="lesson-content backend-lesson"><h3 id="overview-objectives-and-architectural-importance">Overview, objectives, and architectural importance</h3>
+<p>Synchronous code blocks its thread while waiting for I/O. <code>asyncio</code> provides concurrency, not automatic CPU parallelism: an event loop switches coroutines at <code>await</code> points. Python positions it for I/O-bound network code and queues <a href="https://docs.python.org/3/library/asyncio.html" target="_blank" rel="noopener noreferrer" title="Python asyncio — Asynchronous I/O">1</a>. Learners will explain sync/async, use the event loop and <code>TaskGroup</code>, propagate cancellation, and design bounded queues.</p>
+<p>This matters in a server because a request handler that performs blocking work can starve other requests. Conversely, unbounded “fire-and-forget” tasks can exhaust memory and disappear at shutdown. A bounded in-process queue protects memory and gives the service an explicit overload policy, but it is <strong>not durable</strong>: process loss loses queued work. That is an acceptable development step, not a production queue.</p>
+<h3 id="ordered-topics">Ordered topics</h3>
+<ol>
+<li><strong>Sync versus async.</strong> Use <code>async def</code> with an async I/O library; keep blocking SDKs out of the loop by using <code>asyncio.to_thread</code> or a worker process.</li>
+<li><strong>The event loop.</strong> <code>asyncio.run(main())</code> owns a loop. <code>create_task()</code> schedules a coroutine, but a task must be retained and awaited; the official docs warn that the loop keeps only weak references <a href="https://docs.python.org/3/library/asyncio-task.html" target="_blank" rel="noopener noreferrer" title="Python asyncio — Coroutines and Tasks">2</a>.</li>
+<li><strong>Structured concurrency.</strong> <code>TaskGroup</code> scopes child tasks and waits for them. If one child fails, remaining children are cancelled and failures are grouped. A coroutine should clean up in <code>finally</code> and re-raise <code>CancelledError</code>; swallowing it breaks structured-concurrency and timeout machinery <a href="https://docs.python.org/3/library/asyncio-task.html" target="_blank" rel="noopener noreferrer" title="Python asyncio — Coroutines and Tasks">2</a>.</li>
+<li><strong>Backpressure.</strong> A bounded <code>asyncio.Queue(maxsize=N)</code> makes producers wait when consumers lag. Choose an explicit timeout, reject with HTTP 429/503 at an API boundary, or persist to a durable queue; never let queue size grow without limit.</li>
+<li><strong>Pipeline boundaries.</strong> Keep intake, fetch, validate, and persist small and keyed by a stable <code>job_id</code>; pass references, not secrets or giant payloads.</li>
+</ol>
+<h3 id="complete-local-blueprint-development-demo">Complete local blueprint (development demo)</h3>
+<p>Save as <code>async_demo.py</code>; it uses only the standard library and an in-memory queue plus SQLite for observable status. SQLite calls are moved to a thread so this small demo does not block the event loop. Run with <code>python async_demo.py</code>.</p>
+<pre><code class="language-python">from __future__ import annotations
+import asyncio, json, logging, sqlite3
+from dataclasses import dataclass
+from pathlib import Path
+
+DB = Path(&quot;intake-demo.db&quot;)
+QUEUE_LIMIT, WORKERS = 4, 2
+log = logging.getLogger(&quot;intake&quot;)
+
+@dataclass(frozen=True)
+class Job:
+    job_id: str
+    source_url: str                 # In production validate/allow-list this first.
+
+async def db_call(sql: str, params: tuple = ()) -&gt; None:
+    def run() -&gt; None:
+        with sqlite3.connect(DB) as con:
+            con.execute(sql, params); con.commit()
+    await asyncio.to_thread(run)
+
+async def process(job: Job) -&gt; None:
+    # Development mock: replace with an authorized async HTTP client in production.
+    await asyncio.sleep(0.05)
+    if not job.source_url.startswith(&quot;https://api.example.test/&quot;):
+        raise ValueError(&quot;source is not on the approved API host&quot;)
+    normalized = json.dumps({&quot;source&quot;: job.source_url, &quot;valid&quot;: True})
+    await db_call(&quot;UPDATE jobs SET status=?, result=? WHERE job_id=?&quot;,
+                  (&quot;done&quot;, normalized, job.job_id))
+
+async def worker(name: str, q: asyncio.Queue[Job | None]) -&gt; None:
+    while True:
+        job = await q.get()
+        try:
+            if job is None: return
+            log.info(&quot;worker=%s job=%s start&quot;, name, job.job_id)
+            await process(job)
+        except asyncio.CancelledError:
+            log.info(&quot;worker=%s cancelled&quot;, name)
+            raise
+        except Exception:
+            log.exception(&quot;worker=%s job=%s failed&quot;, name, job.job_id)
+            await db_call(&quot;UPDATE jobs SET status=? WHERE job_id=?&quot;,
+                          (&quot;failed&quot;, job.job_id))
+        finally:
+            q.task_done()
+
+async def main() -&gt; None:
+    logging.basicConfig(level=logging.INFO, format=&quot;%(asctime)s %(levelname)s %(message)s&quot;)
+    await db_call(&quot;CREATE TABLE IF NOT EXISTS jobs (job_id TEXT PRIMARY KEY, source_url TEXT NOT NULL, status TEXT NOT NULL, result TEXT)&quot;)
+    q: asyncio.Queue[Job | None] = asyncio.Queue(maxsize=QUEUE_LIMIT)
+    async with asyncio.TaskGroup() as tg:
+        for n in range(WORKERS): tg.create_task(worker(f&quot;w{n}&quot;, q))
+        for i in range(6):
+            job = Job(f&quot;job-{i}&quot;, &quot;https://api.example.test/items/&quot; + str(i))
+            await db_call(&quot;INSERT OR IGNORE INTO jobs(job_id,source_url,status) VALUES(?,?,?)&quot;,
+                          (job.job_id, job.source_url, &quot;queued&quot;))
+            # wait_for makes overload visible instead of waiting forever.
+            await asyncio.wait_for(q.put(job), timeout=2)
+        await q.join()
+        for _ in range(WORKERS): await q.put(None)
+
+if __name__ == &quot;__main__&quot;:
+    try: asyncio.run(main())
+    except KeyboardInterrupt: pass
+</code></pre>
+<h3 id="deployment-and-operations-context">Deployment and operations context</h3>
+<p><strong>Local:</strong> inspect <code>intake-demo.db</code>; slow workers should make producers pause at four queued jobs. <strong>Server:</strong> an in-process queue is tied to one process; restart loses queued memory. <strong>Production:</strong> keep <code>process()</code>, replace SQLite with PostgreSQL, and publish a small JSON command to a durable queue. Use a unique job/source key <a href="https://www.postgresql.org/docs/current/ddl-constraints.html" target="_blank" rel="noopener noreferrer" title="PostgreSQL Constraints">8</a> and monitor depth, age, latency, failures, and event-loop lag.</p>
+<h3 id="failure-logging-retry-idempotency-and-security-notes">Failure, logging, retry, idempotency, and security notes</h3>
+<p>Treat malformed URLs and authorization failures as permanent; retry only bounded transient timeouts with backoff and jitter. Log <code>job_id</code>, operation, attempt, duration, and outcome, never tokens or sensitive payloads. Re-raise cancellation after cleanup. SQLite is not a multi-replica queue: <strong>this demo has no crash recovery for queued items</strong>; production needs durable ack/visibility and an outbox or transaction.</p>
+<p><span id="capstone-step"></span></p>
+<h3 id="hands-on-build-step">Hands-on build step</h3>
+<p>Add <code>POST /intakes</code> later, but first implement a CLI intake producer that generates stable UUIDs and inserts <code>queued</code> rows. Add a replay command that submits the same <code>job_id</code> twice and prove <code>INSERT OR IGNORE</code> leaves one row. This is the first capstone slice: bounded processing, status persistence, and a repeat-safe identity.</p><section class="course-references" id="references"><h2>References</h2><ol><li id="ref-1"><a href="https://docs.python.org/3/library/asyncio.html" target="_blank" rel="noopener noreferrer">Python asyncio — Asynchronous I/O</a></li><li id="ref-2"><a href="https://docs.python.org/3/library/asyncio-task.html" target="_blank" rel="noopener noreferrer">Python asyncio — Coroutines and Tasks</a></li><li id="ref-8"><a href="https://www.postgresql.org/docs/current/ddl-constraints.html" target="_blank" rel="noopener noreferrer">PostgreSQL Constraints</a></li></ol></section></article>
+<button class="mark-complete" type="button" data-complete aria-pressed="false">Mark this chapter complete</button>
+<nav class="lesson-nav" aria-label="Previous and next lessons"><a href="09-playwright-automation.html"><small>Previous lesson</small><strong>← Authorized Playwright workflows and production queue boundaries</strong></a><a href="11-celery-scheduling.html"><small>Next lesson</small><strong>Choosing a scheduler: cron, in-process jobs, and durable background work →</strong></a></nav>
+</div></main><footer class="footer"><a href="../index.html">Python Backend &amp; Automation</a> · <a href="../index.html">App Builder’s Workshop</a> · Progress is local to this browser.</footer><script src="../assets/site.js" defer></script></body></html>
