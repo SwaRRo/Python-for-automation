@@ -1,3 +1,5 @@
+(made with help of manus.im)
+
 # Python Backend & Automation
 
 This is the standalone, static HTML course: one landing page plus 15 linked chapters. It includes the shared CSS, JavaScript, and course-mark assets required by those pages. The Tauri course is intentionally not included in this archive.
