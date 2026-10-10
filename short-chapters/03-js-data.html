@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="JavaScript is the language that gives the interface behavior. Start by learning how to name values and organize data into records and lists."><title>03 — JavaScript values and data structures · App Builder’s Workshop</title>
+<link rel="icon" href="../assets/course-mark.svg" type="image/svg+xml"><script>(()=>{let saved=null;try{saved=localStorage.getItem("app-workshop-theme");}catch{}const theme=saved==="dark"||saved==="light"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;})();</script><link rel="stylesheet" href="../assets/site.css"></head>
+<body data-track="short" data-chapter="03-js-data"><a class="skip-link" href="#main">Skip to lesson</a>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="../index.html"><img src="../assets/course-mark.svg" alt=""><span>App Builder’s Workshop</span></a><nav class="topnav" aria-label="Main navigation"><a href="index.html">All chapters</a><button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode: off</button><a class="nav-pill" href="11-capstone.html">Capstone</a></nav></div></header>
+<div class="reading-progress" aria-hidden="true"><span data-reading-progress></span></div>
+<main id="main" class="layout"><aside class="rail" aria-label="Course chapters"><div class="rail-label">Course chapters</div>
+<a href="01-app-map.html"><span class="rail-number">01</span>Map the app before writing code</a>
+<a href="02-html-css.html"><span class="rail-number">02</span>HTML, CSS, and the browser</a>
+<a href="03-js-data.html" aria-current="page"><span class="rail-number">03</span>JavaScript values and data structures</a>
+<a href="04-js-logic.html"><span class="rail-number">04</span>Decisions, functions, and useful array methods</a>
+<a href="05-async-json.html"><span class="rail-number">05</span>Async JavaScript, HTTP, and JSON</a>
+<a href="06-react-components.html"><span class="rail-number">06</span>React components, JSX, props, and events</a>
+<a href="07-react-state.html"><span class="rail-number">07</span>React state, forms, and data-driven screens</a>
+<a href="08-python-fastapi.html"><span class="rail-number">08</span>Python refresh and FastAPI endpoints</a>
+<a href="09-sqlite.html"><span class="rail-number">09</span>SQL and SQLite: persistent records</a>
+<a href="10-tauri-rust.html"><span class="rail-number">10</span>Tauri, Rust, and the desktop boundary</a>
+<a href="11-capstone.html"><span class="rail-number">11</span>Capstone: build one complete feature</a></aside><div class="main">
+<div class="crumbs"><a href="index.html">Short chapter index</a> / Chapter 03</div>
+<header class="lesson-header"><div class="eyebrow">Chapter 03 · Foundations</div><h1>JavaScript values and data structures</h1><p class="lead">JavaScript is the language that gives the interface behavior. Start by learning how to name values and organize data into records and lists.</p><div class="lesson-meta"><span>Estimated time: 35–50 min</span><span>Read, type, explain, practice</span></div></header>
+<div class="note-box short-version-note"><strong>Concise version.</strong> This preserves the earlier, shorter lesson. <a href="../chapters/03-js-data.html">Open the expanded Chapter 03 lesson</a> for the full walkthrough.</div>
+<section class="outcomes"><h2>By the end, you can…</h2><ul><li>Choose between const and let.</li><li>Recognize primitive values, objects, arrays, null, and undefined.</li><li>Read and update an object representing an app record.</li></ul></section>
+<article class="lesson-content"><section id="section-1"><h2>Variables and types <a class="section-anchor" href="#section-1" aria-label="Link to Variables and types">¶</a></h2><p>A variable is a name bound to a value. Prefer <code>const</code>; use <code>let</code> only when you will reassign the binding. JavaScript’s common primitive types include string, number, boolean, undefined, null, bigint, and symbol. You will mostly use strings, numbers, booleans, and the special missing-value cases in app code.</p><pre><code>const title = "Prepare report";   // string
+const priority = 2;               // number
+let isDone = false;               // boolean
+isDone = true;                    // reassignment is allowed with let
+const dueDate = null;             // explicitly no date yet
+let serverResult;                 // undefined until assigned</code></pre><p>A <code>const</code> variable cannot be assigned a different value, but if it holds an object, the object’s properties can still be changed. That distinction matters later in React; we usually create a new object and array instead.</p></section>
+<section id="section-2"><h2>Objects represent one record <a class="section-anchor" href="#section-2" aria-label="Link to Objects represent one record">¶</a></h2><p>An object groups named properties. It is similar to a Python dictionary. Use dot notation when you know the property name, and bracket notation when it is computed or contains special characters.</p><pre><code>const task = {
+  id: 7,
+  title: "Prepare report",
+  priority: 2,
+  done: false,
+};
+
+console.log(task.title);     // "Prepare report"
+task.done = true;            // property mutation (avoid this for React state)</code></pre><p>JavaScript object properties are often accessed with dot notation; object literals use braces. Python dictionaries use square-bracket lookups by default.</p></section>
+<section id="section-3"><h2>Arrays are ordered collections <a class="section-anchor" href="#section-3" aria-label="Link to Arrays are ordered collections">¶</a></h2><p>An array stores values in order and starts counting positions at zero. An app’s records commonly arrive as an array of objects.</p><pre><code>const tasks = [
+  { id: 7, title: "Prepare report", done: false },
+  { id: 8, title: "Book a room", done: true },
+];
+
+console.log(tasks.length);       // 2
+console.log(tasks[0].title);     // "Prepare report"</code></pre><p>Arrays and objects are reference values: variables point to them. Two variables can refer to the same underlying object. That is why changing a shared nested value can create surprising effects. For React UI state, prefer a new array/object when representing a change.</p><p>JSON resembles object/array syntax, but JSON is text with stricter rules. Chapter 5 explains the conversion boundary.</p><div class="callout"><h2>Read types before values</h2><p>If code fails, ask: is this value a string, a number, an object, or an array? A string <code>"3"</code> is not the same thing as number <code>3</code>.</p></div></section>
+<section class="exercise" id="practice"><h2>Practice it</h2><p>Create an object for a book, note, task, or product with an ID, a name/title, a numeric field, and a boolean status. Put two such objects in an array. Read one property from the second object.</p><details><summary><strong>Show answer guidance</strong></summary><div class="answer"><p>For example: <code>const notes = [{id:1,title:"Idea",pinned:false},{id:2,title:"Meeting",pinned:true}]</code>. The second title is <code>notes[1].title</code>. The array index is 1, but its item ID is 2; those are different concepts.</p></div></details></section>
+<section class="resource-list" id="references"><h2>References for deeper study</h2><p class="small muted">The lesson is self-contained; these are optional official or well-established references.</p><ul><li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Grammar_and_types" target="_blank" rel="noopener noreferrer">MDN: Grammar and types <span aria-hidden="true">↗</span></a></li><li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Working_with_objects" target="_blank" rel="noopener noreferrer">MDN: Working with objects <span aria-hidden="true">↗</span></a></li><li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Indexed_collections" target="_blank" rel="noopener noreferrer">MDN: Indexed collections <span aria-hidden="true">↗</span></a></li></ul></section>
+</article>
+<button class="mark-complete" type="button" data-complete aria-pressed="false">Mark this chapter complete</button>
+<nav class="lesson-nav" aria-label="Previous and next chapters"><a href="02-html-css.html"><small>Previous chapter</small><strong>← HTML, CSS, and the browser</strong></a><a href="04-js-logic.html"><small>Next chapter</small><strong>Decisions, functions, and useful array methods →</strong></a></nav>
+</div></main><footer class="footer"><a href="../index.html">App Builder’s Workshop</a> · Progress checkmarks stay in this browser.</footer><script src="../assets/site.js" defer></script></body></html>

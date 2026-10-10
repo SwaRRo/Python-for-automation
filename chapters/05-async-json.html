@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A desktop interface often waits for a backend or database. Learn how JavaScript waits for that result without freezing the whole window."><title>05 — Async JavaScript, HTTP, and JSON · App Builder’s Workshop</title>
+<link rel="icon" href="../assets/course-mark.svg" type="image/svg+xml"><script>(()=>{let saved=null;try{saved=localStorage.getItem("app-workshop-theme");}catch{}const theme=saved==="dark"||saved==="light"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;})();</script><link rel="stylesheet" href="../assets/site.css"></head>
+<body data-chapter="05-async-json"><a class="skip-link" href="#main">Skip to lesson</a>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="../index.html"><img src="../assets/course-mark.svg" alt=""><span>App Builder’s Workshop</span></a><nav class="topnav" aria-label="Main navigation"><a href="../index.html#roadmap">All chapters</a><button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode: off</button><a class="nav-pill" href="11-capstone.html">Capstone</a></nav></div></header>
+<div class="reading-progress" aria-hidden="true"><span data-reading-progress></span></div>
+<main id="main" class="layout"><aside class="rail" aria-label="Course chapters"><div class="rail-label">Course chapters</div>
+<a href="01-app-map.html"><span class="rail-number">01</span>Map the app before writing code</a>
+<a href="02-html-css.html"><span class="rail-number">02</span>HTML, CSS, and the browser</a>
+<a href="03-js-data.html"><span class="rail-number">03</span>JavaScript values and data structures</a>
+<a href="04-js-logic.html"><span class="rail-number">04</span>Decisions, functions, and useful array methods</a>
+<a href="05-async-json.html" aria-current="page"><span class="rail-number">05</span>Async JavaScript, HTTP, and JSON</a>
+<a href="06-react-components.html"><span class="rail-number">06</span>React components, JSX, props, and events</a>
+<a href="07-react-state.html"><span class="rail-number">07</span>React state, forms, and data-driven screens</a>
+<a href="08-python-fastapi.html"><span class="rail-number">08</span>Python refresh and FastAPI endpoints</a>
+<a href="09-sqlite.html"><span class="rail-number">09</span>SQL and SQLite: persistent records</a>
+<a href="10-tauri-rust.html"><span class="rail-number">10</span>Tauri, Rust, and the desktop boundary</a>
+<a href="11-capstone.html"><span class="rail-number">11</span>Capstone: build one complete feature</a></aside><div class="main">
+<div class="crumbs"><a href="../index.html">Course home</a> / Chapter 05</div>
+<header class="lesson-header"><div class="eyebrow">Chapter 05 · Core skill</div><h1>Async JavaScript, HTTP, and JSON</h1><p class="lead">A desktop interface often waits for a backend or database. Learn how JavaScript waits for that result without freezing the whole window.</p><div class="lesson-meta"><span>Estimated time: 45–60 min</span><span>Read, type, explain, practice</span></div></header>
+<article class="lesson-content">
+<section id="purpose" class="lesson-section">
+  <h2>Purpose and objectives <a class="section-anchor" href="#purpose" aria-label="Link to Purpose and objectives">¶</a></h2>
+  <p>A useful desktop screen rarely has all its data at the instant it opens. It may need to ask a local API for tasks, wait for the answer, and then show either a list or a helpful error. This chapter explains that waiting without freezing the interface. You will follow one task from a JavaScript object, across an HTTP request, into a JSON response, and back into the screen.</p>
+  <p>By the end, you should be able to:</p>
+  <ul>
+    <li>Describe a Promise as a future success value or failure, and use <code>async</code> and <code>await</code> to read asynchronous code.</li>
+    <li>Describe the request/response flow: method, URL, headers, body, status, and response body.</li>
+    <li>Encode JavaScript data with <code>JSON.stringify()</code>, decode JSON with <code>response.json()</code> or <code>JSON.parse()</code>, and handle network, HTTP, and data errors separately.</li>
+  </ul>
+</section>
+
+<section id="mental-model" class="lesson-section">
+  <h2>Vocabulary and the waiting mental model <a class="section-anchor" href="#mental-model" aria-label="Link to Vocabulary and the waiting mental model">¶</a></h2>
+  <p><strong>Asynchronous</strong> means an operation can finish later, while JavaScript remains able to handle clicks and rendering. A <strong>Promise</strong> is the envelope for that future result. It starts <em>pending</em>, then becomes <em>fulfilled</em> with a value or <em>rejected</em> with an error. A Promise is not the result itself: it is a way to receive the result when it is ready.</p>
+  <p><code>async</code> marks a function as asynchronous. Such a function always returns a Promise, even when it returns an ordinary value. <code>await</code> asks for the value inside a Promise and pauses only the current async function. The browser can continue painting the page and responding to other events.</p>
+  <p>For comparison, the older style attaches <code>.then()</code> and <code>.catch()</code> to a Promise. <code>async</code>/<code>await</code> uses the same Promise machinery, but lets a sequence of steps look like ordinary top-to-bottom code.</p>
+  <pre><code><span class="code-label">JavaScript</span>async function getGreeting() {
+  const response = await fetch("/api/tasks");
+  return response.status;
+}
+
+getGreeting().then((status) =&gt; console.log(status));</code></pre>
+  <p>The call to <code>fetch()</code> returns a Promise immediately. The first <code>await</code> waits for the response headers. The function later returns a status number, wrapped in another Promise. The final line registers what to do when that Promise fulfills; it does not pretend the answer is available synchronously.</p>
+</section>
+
+<section id="http-flow" class="lesson-section">
+  <h2>HTTP: a conversation in two messages <a class="section-anchor" href="#http-flow" aria-label="Link to HTTP: a conversation in two messages">¶</a></h2>
+  <p>HTTP is a standard conversation between a client and a server. The client sends a <strong>request</strong>; the server sends a <strong>response</strong>. A request has a URL, an HTTP method, headers, and sometimes a body. A response has a status code, headers, and sometimes a body.</p>
+  <ul>
+    <li><code>GET</code> asks to read data, such as <code>/tasks</code>.</li>
+    <li><code>POST</code> asks the server to create something, usually carrying a body.</li>
+    <li><code>PATCH</code> changes part of an existing record; <code>DELETE</code> removes one.</li>
+  </ul>
+  <p>Status codes are grouped by their first digit. A <code>2xx</code> status means success (for example, <code>200</code> or <code>201</code>); <code>4xx</code> means the request or permission was a client-side problem (such as <code>400</code>, <code>401</code>, or <code>404</code>); and <code>5xx</code> means the server could not complete a valid request. A status is information from the server, not automatically a JavaScript exception.</p>
+  <div class="callout"><h2>Boundary reminder</h2><p>This lesson demonstrates the FastAPI HTTP path. React sends requests; the trusted API or Tauri command owns validation and storage. The full desktop architecture comparison is in Chapters 01 and 10.</p></div>
+</section>
+
+<section id="json" class="lesson-section">
+  <h2>JSON is the shared envelope <a class="section-anchor" href="#json" aria-label="Link to JSON is the shared envelope">¶</a></h2>
+  <p><strong>JSON</strong> (JavaScript Object Notation) is text used to carry objects and arrays between programs. It supports strings, numbers, booleans, <code>null</code>, arrays, and objects. JSON object keys use double quotes, and JSON has no comments or <code>undefined</code>.</p>
+  <p><code>JSON.stringify(value)</code> turns a JavaScript value into JSON text for a request body. <code>JSON.parse(text)</code> turns JSON text into a JavaScript value. The <code>response.json()</code> method performs the read-and-parse step for an HTTP response and is itself asynchronous.</p>
+  <pre><code><span class="code-label">JavaScript</span>const task = { title: "Prepare report", done: false };
+const requestBody = JSON.stringify(task);
+// requestBody is the text: {"title":"Prepare report","done":false}
+
+const copy = JSON.parse(requestBody);
+console.log(copy.title); // Prepare report</code></pre>
+  <p>The object is convenient inside JavaScript, while the string is what travels over HTTP. Dates, functions, and custom class instances need deliberate handling; keep this beginner example to plain data records.</p>
+</section>
+
+<section id="worked-example" class="lesson-section">
+  <h2>Worked example: load and create tasks <a class="section-anchor" href="#worked-example" aria-label="Link to Worked example: load and create tasks">¶</a></h2>
+  <p>During browser development, the frontend calls the same-origin Vite proxy at <code>/api/tasks</code>. Vite forwards this to FastAPI’s <code>/tasks</code> route on <code>127.0.0.1:8000</code> (configuration below). Read the function as a pipeline: start request → receive response → verify status → decode body → return usable data.</p>
+  <pre><code><span class="code-label">JavaScript</span>async function loadTasks() {
+  const response = await fetch("/api/tasks");
+  if (!response.ok) {
+    throw new Error(`Load failed (${response.status})`);
+  }
+  const tasks = await response.json();
+  return tasks;
+}</code></pre>
+  <ol>
+    <li><code>async function</code> makes <code>loadTasks</code> return a Promise.</li>
+    <li><code>fetch</code> sends a default <code>GET</code> request. The first <code>await</code> produces a <code>Response</code> object when the server answers.</li>
+    <li><code>response.ok</code> is true for status 200–299. If it is false, the explicit <code>throw</code> turns an HTTP failure into an error your caller can handle.</li>
+    <li><code>response.json()</code> reads the response body and parses it. The second <code>await</code> matters because reading the body also takes time.</li>
+    <li>The returned value is an array of task objects, not raw JSON text.</li>
+  </ol>
+  <p>Now create one task. The method, header, and body tell the API what kind of data it is receiving.</p>
+  <pre><span class="code-label">JavaScript</span><code>async function createTask(title) {
+  const response = await fetch("/api/tasks", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  if (!response.ok) {
+    throw new Error(`Save failed (${response.status})`);
+  }
+  return await response.json();
+}
+
+async function demonstrateCreate() {
+  const saved = await createTask("Prepare report");
+  console.log(saved.id, saved.title, saved.done, saved.created_at);
+}
+
+void demonstrateCreate().catch((error) =&gt; console.error(error));</code></pre>
+  <p>The header says the body is JSON, and <code>JSON.stringify</code> supplies the text. This contract sends only <code>{ title }</code>; the server assigns the ID, completion flag, and timestamp, then returns the full saved Task with <code>201 Created</code>. The call runs inside <code>demonstrateCreate</code>, so it works in an ordinary module without relying on top-level <code>await</code>.</p>
+</section>
+
+<section id="errors" class="lesson-section">
+  <h2>Three failure layers, one friendly UI <a class="section-anchor" href="#errors" aria-label="Link to Three failure layers, one friendly UI">¶</a></h2>
+  <p>Put the request in <code>try/catch</code> so the screen can stop showing “Loading…” and show a useful message. A network failure (server stopped, refused connection, or blocked request) may cause <code>fetch</code> to reject and produce no normal response. An HTTP error such as <code>404</code> or <code>500</code> does produce a response, so <code>catch</code> will not run unless you check <code>response.ok</code> and throw. Finally, malformed JSON can make <code>response.json()</code> reject.</p>
+  <pre><code><span class="code-label">JavaScript</span>async function refreshTasks(showTasks, showError) {
+  try {
+    const tasks = await loadTasks();
+    showTasks(tasks);
+  } catch (error) {
+    console.error(error);
+    showError("Tasks could not be loaded. Check the local service and try again.");
+  }
+}</code></pre>
+  <p><code>showTasks</code> and <code>showError</code> are functions supplied by the screen; they are not magic libraries. Keeping the API function responsible for fetching and the UI responsible for messages makes each part easier to test. In a real screen, set loading state before calling, disable a duplicate submit while saving, and clear or replace loading state in both success and failure paths.</p>
+  <div class="callout"><h2>Local development and CORS</h2><p>A scheme, host, and port form an origin. The Vite proxy below makes the browser call its own origin, so CORS is not needed for that development request. If you call FastAPI directly from a different origin, the API must explicitly allow that origin. CORS is not authentication; a packaged sidecar still needs loopback binding, controlled startup, and a deliberate security boundary.</p></div>
+</section>
+
+<section class="lesson-section" id="dev-proxy">
+  <h2>Route one development URL to FastAPI</h2>
+  <p>Keep the frontend call simple: <code>fetch("/api/tasks")</code>. Add this <code>server.proxy</code> entry to your existing Vite configuration; keep any React plugin already present. The development server strips the prefix and forwards the request, so FastAPI receives <code>/tasks</code>, <code>/tasks/7</code>, and the other routes described in Chapter 01.</p>
+  <pre><span class="code-label">JavaScript · vite.config.js (merge this server section)</span><code>import { defineConfig } from "vite";
+
+export default defineConfig({
+  server: {
+    proxy: {
+      "/api": {
+        target: "http://127.0.0.1:8000",
+        changeOrigin: true,
+        rewrite: (path) =&gt; path.replace(/^\/api/, ""),
+      },
+    },
+  },
+});</code></pre>
+  <p>The proxy exists only while Vite’s development server is running. It is not bundled into a production Tauri app. A packaged app must deliberately choose a Tauri/Rust command or a FastAPI sidecar with a configured URL, lifecycle, permissions, and origin policy; do not assume <code>/api</code> will work by magic once the proxy is gone.</p>
+  <details><summary><strong>If you choose a direct cross-origin dev request instead</strong></summary>
+    <div class="answer"><p>Allow only the actual frontend origins you use, not every website. This example has no cookie authentication, so credentials stay disabled:</p>
+      <pre><span class="code-label">Python · FastAPI CORS middleware</span><code>from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    allow_headers=["Content-Type"],
+)</code></pre>
+      <p>Keep the route at <code>/tasks</code> if calling FastAPI directly. The browser URL, scheme, host, and port must match one of the allowed origins exactly. A packaged Tauri webview uses a different origin; determine and configure it deliberately rather than copying these development values.</p>
+    </div>
+  </details>
+  <p class="small muted">Official references: <a href="https://vite.dev/config/server-options" target="_blank" rel="noopener noreferrer">Vite server proxy options</a> · <a href="https://fastapi.tiangolo.com/tutorial/cors/" target="_blank" rel="noopener noreferrer">FastAPI CORS guide</a>.</p>
+</section>
+
+<section class="mistake" id="mistakes">
+  <h2>Common mistake → symptom → fix</h2>
+  <ul>
+    <li><strong>Forgetting <code>await</code>:</strong> the UI receives a Promise and <code>tasks.map</code> fails. <strong>Fix:</strong> await the Promise inside an async function.</li>
+    <li><strong>Assuming 500 enters <code>catch</code>:</strong> the code tries to parse an error page as a successful list. <strong>Fix:</strong> check <code>response.ok</code> before reading the body.</li>
+    <li><strong>Sending an object as <code>body</code>:</strong> the server reports invalid JSON. <strong>Fix:</strong> use <code>JSON.stringify</code> and the <code>Content-Type</code> header.</li>
+    <li><strong>Calling <code>response.json()</code> twice:</strong> the second read fails because a response body is consumed. <strong>Fix:</strong> parse once and reuse the resulting value.</li>
+    <li><strong>Using the wrong URL or assuming FastAPI is present:</strong> the request is refused. <strong>Fix:</strong> start the separate sidecar, verify its route, and keep its lifecycle explicit.</li>
+  </ul>
+</section>
+
+<section class="exercise" id="practice">
+  <h2>Beginner exercise</h2>
+  <p>Write <code>loadOneTask(id)</code> for <code>GET /api/tasks/7</code>. It should check <code>response.ok</code>, throw an error containing the status when needed, parse JSON, and return the task. Then state what differs between a refused connection and a <code>404</code>.</p>
+  <details><summary><strong>Show the worked answer and explanation</strong></summary>
+    <div class="answer">
+      <pre><code><span class="code-label">JavaScript</span>async function loadOneTask(id) {
+  try {
+    const response = await fetch(`/api/tasks/${id}`);
+    if (!response.ok) {
+      throw new Error(`Task lookup failed (${response.status})`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("Could not load task", error);
+    throw error;
+  }
+}</code></pre>
+      <p>The template string places the ID in the URL. The first <code>await</code> gets a response, <code>ok</code> distinguishes 2xx from HTTP errors, and the second <code>await</code> decodes the body. A refused connection generally means no response was created, so <code>fetch</code> rejects. A <code>404</code> is a response from a reachable server saying that this task or route was not found; the explicit check turns it into the same catchable error shape for the caller.</p>
+    </div>
+  </details>
+</section>
+
+<section id="recap" class="lesson-section">
+  <h2>Recap and next-step bridge <a class="section-anchor" href="#recap" aria-label="Link to Recap and next-step bridge">¶</a></h2>
+  <p>A Promise represents a future result; <code>async</code>/<code>await</code> makes its steps readable without blocking the whole UI. HTTP carries a request and response across a boundary. JSON is text on that boundary, converted with <code>JSON.stringify</code> going out and <code>response.json()</code> or <code>JSON.parse</code> coming in. Check status explicitly, catch network and parsing failures, and give the user a loading, success, or error state.</p>
+  <p>Next, React will turn these functions into components. Chapter 06 introduces JSX, props, and events; Chapter 07 will connect asynchronous loading and saving to React state so the task list visibly changes at the right time.</p>
+</section>
+
+<section class="resource-list" id="references">
+  <h2>References for deeper study</h2>
+  <p class="small muted">These maintained references confirm the browser behavior used in this lesson.</p>
+  <ul>
+    <li><a href="https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch" target="_blank" rel="noopener noreferrer">MDN: Using the Fetch API <span aria-hidden="true">↗</span></a></li>
+    <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise" target="_blank" rel="noopener noreferrer">MDN: Promise <span aria-hidden="true">↗</span></a></li>
+    <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON" target="_blank" rel="noopener noreferrer">MDN: JSON, parse, and stringify <span aria-hidden="true">↗</span></a></li>
+    <li><a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status" target="_blank" rel="noopener noreferrer">MDN: HTTP response status codes <span aria-hidden="true">↗</span></a></li>
+  </ul>
+</section>
+</article>
+<button class="mark-complete" type="button" data-complete aria-pressed="false">Mark this chapter complete</button>
+<nav class="lesson-nav" aria-label="Previous and next chapters"><a href="04-js-logic.html"><small>Previous chapter</small><strong>← Decisions, functions, and useful array methods</strong></a><a href="06-react-components.html"><small>Next chapter</small><strong>React components, JSX, props, and events →</strong></a></nav>
+</div></main><footer class="footer"><a href="../index.html">App Builder’s Workshop</a> · Progress checkmarks stay in this browser.</footer><script src="../assets/site.js" defer></script></body></html>

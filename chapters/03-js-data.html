@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="JavaScript is the language that gives the interface behavior. Start by learning how to name values and organize data into records and lists."><title>03 — JavaScript values and data structures · App Builder’s Workshop</title>
+<link rel="icon" href="../assets/course-mark.svg" type="image/svg+xml"><script>(()=>{let saved=null;try{saved=localStorage.getItem("app-workshop-theme");}catch{}const theme=saved==="dark"||saved==="light"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;})();</script><link rel="stylesheet" href="../assets/site.css"></head>
+<body data-chapter="03-js-data"><a class="skip-link" href="#main">Skip to lesson</a>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="../index.html"><img src="../assets/course-mark.svg" alt=""><span>App Builder’s Workshop</span></a><nav class="topnav" aria-label="Main navigation"><a href="../index.html#roadmap">All chapters</a><button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode: off</button><a class="nav-pill" href="11-capstone.html">Capstone</a></nav></div></header>
+<div class="reading-progress" aria-hidden="true"><span data-reading-progress></span></div>
+<main id="main" class="layout"><aside class="rail" aria-label="Course chapters"><div class="rail-label">Course chapters</div>
+<a href="01-app-map.html"><span class="rail-number">01</span>Map the app before writing code</a>
+<a href="02-html-css.html"><span class="rail-number">02</span>HTML, CSS, and the browser</a>
+<a href="03-js-data.html" aria-current="page"><span class="rail-number">03</span>JavaScript values and data structures</a>
+<a href="04-js-logic.html"><span class="rail-number">04</span>Decisions, functions, and useful array methods</a>
+<a href="05-async-json.html"><span class="rail-number">05</span>Async JavaScript, HTTP, and JSON</a>
+<a href="06-react-components.html"><span class="rail-number">06</span>React components, JSX, props, and events</a>
+<a href="07-react-state.html"><span class="rail-number">07</span>React state, forms, and data-driven screens</a>
+<a href="08-python-fastapi.html"><span class="rail-number">08</span>Python refresh and FastAPI endpoints</a>
+<a href="09-sqlite.html"><span class="rail-number">09</span>SQL and SQLite: persistent records</a>
+<a href="10-tauri-rust.html"><span class="rail-number">10</span>Tauri, Rust, and the desktop boundary</a>
+<a href="11-capstone.html"><span class="rail-number">11</span>Capstone: build one complete feature</a></aside><div class="main">
+<div class="crumbs"><a href="../index.html">Course home</a> / Chapter 03</div>
+<header class="lesson-header"><div class="eyebrow">Chapter 03 · Foundations</div><h1>JavaScript values and data structures</h1><p class="lead">JavaScript is the language that gives the interface behavior. Start by learning how to name values and organize data into records and lists.</p><div class="lesson-meta"><span>Estimated time: 35–50 min</span><span>Read, type, explain, practice</span></div></header>
+<article class="lesson-content">
+<section class="lesson-section" id="purpose">
+  <h2>Purpose and objectives <a class="section-anchor" href="#purpose" aria-label="Link to Purpose and objectives">¶</a></h2>
+  <p>JavaScript makes a screen respond to a person. Before a button can save a task or a list can show database rows, the program needs names for values and a predictable shape for each record. This chapter uses a small task feature as its running example.</p>
+  <p>By the end, you should be able to choose <code>const</code> or <code>let</code>, tell a primitive from an object or array, read and update a record, distinguish <code>null</code> from <code>undefined</code>, and design a JSON-safe shape that can cross an app boundary. You will also translate each idea into familiar Python terms.</p>
+</section>
+
+<section class="lesson-section" id="mental-model">
+  <h2>Vocabulary and mental model <a class="section-anchor" href="#mental-model" aria-label="Link to Vocabulary and mental model">¶</a></h2>
+  <p>Think of a variable as a labeled place in your program. The label is not the value itself; it gives you a way to refer to a value later. A <strong>primitive</strong> is one simple value: a string, number, boolean, <code>null</code>, <code>undefined</code>, bigint, or symbol. An <strong>object</strong> groups named properties, and an <strong>array</strong> is an ordered object-like collection whose positions start at zero.</p>
+  <p>A beginner distinction is “copied value” versus “shared reference.” A primitive assignment copies the value; an object or array assignment copies a reference to the same underlying record.</p>
+  <div class="callout">
+    <h2>Binding versus contents</h2>
+    <p><code>const</code> prevents a variable binding from being pointed at a different value. It does not freeze an object’s contents. For React state, you will normally create a new object or array instead of mutating the old one, because a new reference makes a change easy for React to detect.</p>
+  </div>
+  <dl class="glossary">
+    <dt>property</dt><dd>A named value inside an object, such as <code>task.title</code>.</dd>
+    <dt>index</dt><dd>A zero-based position in an array, such as <code>tasks[0]</code>.</dd>
+    <dt>reference</dt><dd>A link from a variable to an object or array.</dd>
+    <dt>JSON-safe</dt><dd>Data made only from JSON values: objects, arrays, strings, finite numbers, booleans, and <code>null</code>.</dd>
+  </dl>
+</section>
+
+<section class="lesson-section" id="const-let">
+  <h2><code>const</code>, <code>let</code>, and primitive values <a class="section-anchor" href="#const-let" aria-label="Link to const let and primitive values">¶</a></h2>
+  <p>Prefer <code>const</code> when the variable will not be assigned a different value. Use <code>let</code> when the binding must be reassigned, such as a counter or a value that arrives later. Avoid the older <code>var</code> in new code; its function-scoping rules make beginner mistakes harder to see.</p>
+  <pre><span class="code-label">JavaScript</span><code>const title = "Prepare report"; // string: text
+const priority = 2;              // number: numeric data
+const isDone = false;            // boolean: true or false
+const dueDate = null;            // deliberately no date
+let serverResult;                // declared, but currently undefined
+serverResult = "saved";          // let permits reassignment</code></pre>
+  <p>Line by line: the first four bindings use <code>const</code>; the last starts as <code>undefined</code> and is later assigned. A <code>const</code> declaration must have an initializer, so <code>const serverResult;</code> is a syntax error.</p>
+  <p>JavaScript is dynamically typed, so inspect values at a UI boundary instead of guessing. <code>typeof</code> helps, but <code>typeof null</code> historically returns <code>"object"</code>; use <code>value === null</code> for an explicit null check.</p>
+</section>
+
+<section class="lesson-section" id="records-lists">
+  <h2>Objects and arrays model app data <a class="section-anchor" href="#records-lists" aria-label="Link to Objects and arrays model app data">¶</a></h2>
+  <p>An object literal uses braces and stores key–value pairs. It is close to a Python dictionary, but JavaScript usually reads a known key with dot notation. Bracket notation is useful when the key is stored in another variable.</p>
+  <pre><span class="code-label">JavaScript</span><code>const task = {
+  id: 7,
+  title: "Prepare report",
+  done: false,
+  created_at: "2026-10-06T08:30:00Z",
+};
+
+console.log(task.title);       // "Prepare report"
+const field = "title";
+console.log(task[field]);      // "Prepare report"
+
+task.done = true;              // changes this object’s property</code></pre>
+  <p>The braces create one record. <code>task.title</code> reads a known key; <code>task[field]</code> reads a key chosen at runtime. The final line mutates this object. It is legal with a <code>const</code> reference, but a React state update will later use a copied object.</p>
+  <p>An array uses square brackets and preserves order. Its first item is index zero, and <code>length</code> counts items. The common app shape is an array of records:</p>
+  <pre><span class="code-label">JavaScript</span><code>const tasks = [
+  { id: 7, title: "Prepare report", done: false, created_at: "2026-10-06T08:30:00Z" },
+  { id: 8, title: "Book a room", done: true, created_at: "2026-10-06T09:00:00Z" },
+];
+
+console.log(tasks.length);       // 2
+console.log(tasks[0].title);     // "Prepare report"
+console.log(tasks[1].done);      // true</code></pre>
+  <p>Read left to right: choose the array, item <code>0</code>, then its <code>title</code>. An index is not a database ID: index <code>1</code> currently holds the record with ID <code>8</code>. The persisted Task also carries <code>created_at</code>; every stored record follows the contract in Chapter 01.</p>
+</section>
+
+<section class="lesson-section" id="worked-example">
+  <h2>Worked example: prepare one task for the app <a class="section-anchor" href="#worked-example" aria-label="Link to Worked example prepare one task for the app">¶</a></h2>
+  <p>Start with an in-memory list so its shape is visible. These are complete examples of the shared Task record; the API will later supply the same fields from FastAPI or a Tauri command.</p>
+  <pre><span class="code-label">JavaScript</span><code>const tasks = [
+  { id: 7, title: "Prepare report", done: false, created_at: "2026-10-06T08:30:00Z" },
+  { id: 8, title: "Book a room", done: true, created_at: "2026-10-06T09:00:00Z" },
+];
+
+const firstTask = tasks[0];
+const display = {
+  id: firstTask.id,
+  label: firstTask.title,
+  status: firstTask.done ? "complete" : "open",
+};
+
+console.log(display);
+// { id: 7, label: "Prepare report", status: "open" }</code></pre>
+  <p><code>tasks</code> is an array; <code>firstTask</code> refers to item zero; <code>display</code> is a view projection containing only the fields this row needs. The persisted record still has the shared <code>created_at</code> field. The conditional expression turns <code>false</code> into <code>"open"</code>; Chapter 04 explains decisions.</p>
+  <p>These records follow Chapter 01’s shared contract. React renders them from state; the full Rust-command versus FastAPI-sidecar choice is mapped in Chapter 01 and revisited in Chapter 10.</p>
+</section>
+
+<section class="lesson-section" id="null-undefined-json">
+  <h2><code>null</code>, <code>undefined</code>, and JSON-safe shapes <a class="section-anchor" href="#null-undefined-json" aria-label="Link to null undefined and JSON-safe shapes">¶</a></h2>
+  <p>Use <code>null</code> for intentional absence; <code>undefined</code> usually means a value was not supplied or a property does not exist. They are different signals. The optional <code>dueDate</code> below is a hypothetical extension, not part of the course-wide Task contract. Adding it to a real app would require changing the API and database together.</p>
+  <pre><span class="code-label">JavaScript</span><code>const optionalDueDate = null; // hypothetical extension field
+const incompleteDraft = {};
+console.log(optionalDueDate);       // null: deliberately no due date
+console.log(incompleteDraft.owner); // undefined: no owner property
+
+const jsonText = JSON.stringify({
+  title: "Prepare report",
+  dueDate: optionalDueDate,
+});
+const copy = JSON.parse(jsonText);
+console.log(jsonText);
+// {"title":"Prepare report","dueDate":null}</code></pre>
+  <p><code>JSON.stringify</code> makes request/response text; <code>JSON.parse</code> makes JavaScript data again. A JSON-safe shape uses objects, arrays, strings, numbers, booleans, and <code>null</code>. Functions, symbols, and <code>undefined</code> do not belong in it: an <code>undefined</code> property is omitted during stringification. Avoid non-finite numbers such as <code>NaN</code> in an API payload.</p>
+  <blockquote>Shape first, transport second: decide what one task means, then let the UI and backend agree on that shape.</blockquote>
+</section>
+
+<section class="lesson-section" id="python-comparison">
+  <h2>Python comparisons that prevent translation errors <a class="section-anchor" href="#python-comparison" aria-label="Link to Python comparisons">¶</a></h2>
+  <p>Your Python experience transfers well: an object resembles a dictionary, an array a list, and <code>null</code> resembles <code>None</code>. <code>undefined</code> has no exact everyday Python equivalent. Both languages use zero-based indexing and mutable dictionaries/lists.</p>
+  <pre><span class="code-label">Python</span><code>task = {"id": 7, "title": "Prepare report", "done": False, "created_at": "2026-10-06T08:30:00Z"}
+print(task["title"])</code></pre>
+  <pre><span class="code-label">JavaScript</span><code>const task = { id: 7, title: "Prepare report", done: false, created_at: "2026-10-06T08:30:00Z" };
+console.log(task.title);</code></pre>
+  <p>Python spells booleans <code>True</code>/<code>False</code>, uses <code>None</code>, and commonly uses brackets for dictionary lookup. JavaScript uses lowercase <code>true</code>/<code>false</code>/<code>null</code>; dot notation is common. Python raises <code>KeyError</code> for a missing key, while JavaScript returns <code>undefined</code>, so validate an API response before rendering.</p>
+</section>
+
+<section class="mistake" id="mistakes">
+  <h2>Common mistake → symptom → fix</h2>
+  <ul>
+    <li><strong>Mutating a shared reference</strong> → a second variable or a UI row changes unexpectedly → copy the outer object/array for a change; React will practice this pattern in Chapter 07.</li>
+    <li><strong>Using an array index as an ID</strong> → editing the wrong task after sorting or deleting → use the record’s stable <code>id</code> for identity and the index only for position.</li>
+    <li><strong>Confusing missing with deliberately empty</strong> → a request omits a field or a screen shows “undefined” → choose <code>null</code> for intentional emptiness and check optional properties before displaying them.</li>
+    <li><strong>Mixing text and numbers</strong> → <code>"2" + 1</code> produces <code>"21"</code> instead of <code>3</code> → inspect the value and convert validated input at the boundary.</li>
+  </ul>
+</section>
+
+<section class="exercise" id="practice">
+  <h2>Beginner exercise</h2>
+  <p>Create a JSON-safe array named <code>notes</code> with two objects. Each object must have a numeric <code>id</code>, a string <code>title</code>, a boolean <code>pinned</code>, and a <code>reviewedAt</code> value. Make the first note not yet reviewed. Then print the second title and a JSON string of the whole array. Before opening the answer, explain which values are primitives and which value is the reference to the collection.</p>
+  <details><summary><strong>Show worked answer and explanation</strong></summary><div class="answer">
+    <pre><span class="code-label">JavaScript</span><code>const notes = [
+  { id: 1, title: "Idea", pinned: false, reviewedAt: null },
+  { id: 2, title: "Meeting", pinned: true, reviewedAt: "2026-10-07" },
+];
+
+console.log(notes[1].title);       // "Meeting"
+console.log(JSON.stringify(notes));</code></pre>
+    <p><code>notes</code> is a <code>const</code> binding to an array reference. Each <code>id</code> and <code>reviewedAt</code> value is a primitive; each brace-delimited note is an object, and the array contains both objects. The first <code>reviewedAt</code> is <code>null</code> because “not reviewed” is intentional. The second access uses index <code>1</code>, which means the second item, and then reads its <code>title</code>. The final line creates transport text without functions or missing values, so it is safe as a basic JSON payload.</p>
+  </div></details>
+</section>
+
+<section class="lesson-section" id="recap">
+  <h2>Recap and next-step bridge <a class="section-anchor" href="#recap" aria-label="Link to Recap and next-step bridge">¶</a></h2>
+  <p>Use <code>const</code> by default and <code>let</code> only for reassignment. Primitives are simple values; objects describe one record; arrays order many values. Variables holding objects share a reference, so copying matters when a change should be isolated. Use <code>null</code> for intentional absence and recognize <code>undefined</code> as not supplied or not found. Keep API data JSON-safe and separate the React UI from SQLite through either a Tauri/Rust command or a deliberately managed FastAPI sidecar.</p>
+  <p>Next, Chapter 04 turns these values into behavior: <code>if</code>/<code>else</code> decisions, functions, and <code>map</code>/<code>filter</code> operations will derive the rows and capacity rules your task screen needs.</p>
+</section>
+
+<section class="resource-list" id="references">
+  <h2>References for deeper study</h2>
+  <p class="small muted">These optional references are maintained documentation; the lesson examples do not require advanced knowledge from them.</p>
+  <ul>
+    <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Grammar_and_types" target="_blank" rel="noopener noreferrer">MDN: Grammar and types</a></li>
+    <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Working_with_objects" target="_blank" rel="noopener noreferrer">MDN: Working with objects</a></li>
+    <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Indexed_collections" target="_blank" rel="noopener noreferrer">MDN: Indexed collections</a></li>
+    <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON" target="_blank" rel="noopener noreferrer">MDN: JSON</a></li>
+    <li><a href="https://docs.python.org/3/tutorial/datastructures.html" target="_blank" rel="noopener noreferrer">Python documentation: Data structures</a></li>
+  </ul>
+</section>
+</article>
+<button class="mark-complete" type="button" data-complete aria-pressed="false">Mark this chapter complete</button>
+<nav class="lesson-nav" aria-label="Previous and next chapters"><a href="02-html-css.html"><small>Previous chapter</small><strong>← HTML, CSS, and the browser</strong></a><a href="04-js-logic.html"><small>Next chapter</small><strong>Decisions, functions, and useful array methods →</strong></a></nav>
+</div></main><footer class="footer"><a href="../index.html">App Builder’s Workshop</a> · Progress checkmarks stay in this browser.</footer><script src="../assets/site.js" defer></script></body></html>

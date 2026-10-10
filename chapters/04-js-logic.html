@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Programs make choices, reuse named operations, and transform lists. These ideas show up in every React application, from a checklist to a desktop ERP."><title>04 — Decisions, functions, and useful array methods · App Builder’s Workshop</title>
+<link rel="icon" href="../assets/course-mark.svg" type="image/svg+xml"><script>(()=>{let saved=null;try{saved=localStorage.getItem("app-workshop-theme");}catch{}const theme=saved==="dark"||saved==="light"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;})();</script><link rel="stylesheet" href="../assets/site.css"></head>
+<body data-chapter="04-js-logic"><a class="skip-link" href="#main">Skip to lesson</a>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="../index.html"><img src="../assets/course-mark.svg" alt=""><span>App Builder’s Workshop</span></a><nav class="topnav" aria-label="Main navigation"><a href="../index.html#roadmap">All chapters</a><button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode: off</button><a class="nav-pill" href="11-capstone.html">Capstone</a></nav></div></header>
+<div class="reading-progress" aria-hidden="true"><span data-reading-progress></span></div>
+<main id="main" class="layout"><aside class="rail" aria-label="Course chapters"><div class="rail-label">Course chapters</div>
+<a href="01-app-map.html"><span class="rail-number">01</span>Map the app before writing code</a>
+<a href="02-html-css.html"><span class="rail-number">02</span>HTML, CSS, and the browser</a>
+<a href="03-js-data.html"><span class="rail-number">03</span>JavaScript values and data structures</a>
+<a href="04-js-logic.html" aria-current="page"><span class="rail-number">04</span>Decisions, functions, and useful array methods</a>
+<a href="05-async-json.html"><span class="rail-number">05</span>Async JavaScript, HTTP, and JSON</a>
+<a href="06-react-components.html"><span class="rail-number">06</span>React components, JSX, props, and events</a>
+<a href="07-react-state.html"><span class="rail-number">07</span>React state, forms, and data-driven screens</a>
+<a href="08-python-fastapi.html"><span class="rail-number">08</span>Python refresh and FastAPI endpoints</a>
+<a href="09-sqlite.html"><span class="rail-number">09</span>SQL and SQLite: persistent records</a>
+<a href="10-tauri-rust.html"><span class="rail-number">10</span>Tauri, Rust, and the desktop boundary</a>
+<a href="11-capstone.html"><span class="rail-number">11</span>Capstone: build one complete feature</a></aside><div class="main">
+<div class="crumbs"><a href="../index.html">Course home</a> / Chapter 04</div>
+<header class="lesson-header"><div class="eyebrow">Chapter 04 · Foundations</div><h1>Decisions, functions, and useful array methods</h1><p class="lead">Programs make choices, reuse named operations, and transform lists. These ideas show up in every React application, from a checklist to a desktop ERP.</p><div class="lesson-meta"><span>Estimated time: 40–55 min</span><span>Read, type, explain, practice</span></div></header>
+<article class="lesson-content">
+<section class="lesson-section" id="purpose">
+  <h2>Purpose: make small, explainable decisions</h2>
+  <p>Chapter 03 introduced JavaScript values, objects, and arrays. Now we make those values do useful work. A program reads data, checks a rule, chooses a branch, and returns a result. Functions give those rules names; <code>map</code>, <code>filter</code>, and <code>find</code> help us work with lists without changing the original list by accident.</p>
+  <div class="outcomes">
+    <h2>By the end, you can…</h2>
+    <ul>
+      <li>Write readable <code>if</code>/<code>else</code> decisions with strict comparisons.</li>
+      <li>Define and call functions and arrow functions with parameters and return values.</li>
+      <li>Choose <code>map</code>, <code>filter</code>, or <code>find</code> by the job you need to do.</li>
+      <li>Encode a capacity rule, report expected input problems, and handle unexpected failures safely.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="lesson-section" id="mental-model">
+  <h2>Vocabulary and the mental model</h2>
+  <p>Think of a function as a small, named machine. A <strong>parameter</strong> is the named input in its definition; an <strong>argument</strong> is the actual value supplied when you call it. A <strong>return value</strong> is the machine’s answer. Calling a function does not happen when you define it—you must write its name followed by parentheses.</p>
+  <p>A condition is an expression that becomes <code>true</code> or <code>false</code>. In an <code>if</code> statement, JavaScript runs the first block whose condition is true. Use <code>===</code> and <code>!==</code> for comparisons so a number such as <code>5</code> is not silently treated as the string <code>"5"</code>. Use <code>&amp;&amp;</code> for “and”, <code>||</code> for “or”, and <code>!</code> for “not”.</p>
+  <p>The three array methods have three different questions:</p>
+  <ul>
+    <li><code>map</code>: “What new value should I make for <em>every</em> item?” It returns a new array with the same length.</li>
+    <li><code>filter</code>: “Which items pass this test?” It returns a new array that may be shorter, including an empty array.</li>
+    <li><code>find</code>: “What is the first item that matches?” It returns one item or <code>undefined</code> when there is no match.</li>
+  </ul>
+  <div class="callout">
+    <h2>Business rule versus screen detail</h2>
+    <p>A rule such as “a reservation must be positive and no greater than available stock” is application logic. Put it in a small function that can be tested and reused. The trusted server or Tauri command must check it again before changing stored data; the architecture choices are mapped in Chapters 01 and 10.</p>
+  </div>
+</section>
+
+<section class="lesson-section" id="worked-example">
+  <h2>Worked example: protect a stock reservation</h2>
+  <p>Imagine the app has a small stock list. A user enters an item ID and quantity. The function should reject bad quantities, report a missing item, refuse a request over capacity, and accept a valid request. It returns a predictable object instead of making the screen guess what happened.</p>
+  <pre><span class="code-label">JavaScript</span><code>const stock = [
+  { id: "paper", name: "Printer paper", available: 8 },
+  { id: "pens", name: "Blue pens", available: 20 }
+];
+
+function reserve(stock, itemId, quantity) {
+  if (!Number.isInteger(quantity) || quantity &lt;= 0) {
+    return { ok: false, message: "Quantity must be a positive whole number." };
+  }
+
+  const item = stock.find((record) =&gt; record.id === itemId);
+  if (item === undefined) {
+    return { ok: false, message: "That item was not found." };
+  }
+
+  if (quantity &gt; item.available) {
+    return { ok: false, message: `Only ${item.available} are available.` };
+  }
+
+  return { ok: true, itemId: item.id, quantity };
+}
+
+const result = reserve(stock, "paper", 5);
+console.log(result); // { ok: true, itemId: "paper", quantity: 5 }</code></pre>
+  <h3>Follow the data one step at a time</h3>
+  <ol>
+    <li><code>stock</code> is an array of two objects. Each object has an ID, a display name, and a capacity number.</li>
+    <li><code>reserve</code> receives three arguments. Inside the function, they are available through the parameters <code>stock</code>, <code>itemId</code>, and <code>quantity</code>.</li>
+    <li>The first <code>if</code> uses <code>Number.isInteger</code> and a comparison. A decimal, zero, negative number, or non-number exits early with an error-shaped result.</li>
+    <li><code>find</code> tests each record until <code>record.id === itemId</code>. For <code>"paper"</code>, it returns the paper object. The explicit <code>undefined</code> check handles a missing ID before we try to read <code>available</code>.</li>
+    <li>The capacity branch compares the requested quantity with the record’s current availability. A request for 9 is rejected; a request for 5 continues.</li>
+    <li>The final object has <code>ok: true</code>, so a caller can display success without parsing a sentence. Every earlier branch has <code>ok: false</code> and a human-readable message.</li>
+  </ol>
+  <p>The arrow function passed to <code>find</code> is a callback: <code>find</code> calls it once per record. Because its body is one expression, the expression is returned implicitly. The longer equivalent is <code>function (record) { return record.id === itemId; }</code>.</p>
+</section>
+
+<section class="lesson-section" id="functions">
+  <h2>Ordinary and arrow functions</h2>
+  <p>Use a function declaration when a named operation deserves a clear explanation. Use an arrow function often for a short callback or when assigning a small function to a variable. Both can accept parameters and return results.</p>
+  <pre><span class="code-label">JavaScript</span><code>function labelForTask(done) {
+  if (done === true) {
+    return "Done";
+  }
+  return "Open";
+}
+
+const labelForTaskShort = (done) =&gt; done ? "Done" : "Open";
+
+const firstOpenTask = tasks.find((task) =&gt; task.done === false);</code></pre>
+  <p>The first function uses an explicit <code>return</code> in each branch. The arrow version uses a conditional expression: choose the value after <code>?</code> when true, otherwise the value after <code>:</code>. Do not shorten a rule so much that a beginner cannot tell what it means.</p>
+  <div class="mistake">
+    <h2>Common mistake: braces without a return</h2>
+    <p><strong>Symptom:</strong> <code>tasks.map((task) =&gt; { task.title })</code> produces an array of <code>undefined</code>. <strong>Fix:</strong> parentheses mean an implicit return—<code>tasks.map((task) =&gt; (task.title))</code>—or write <code>return task.title;</code> inside the braces. Curly braces start a function body; they do not automatically return its last line.</p>
+  </div>
+</section>
+
+<section class="lesson-section" id="arrays">
+  <h2>Transform, select, and locate lists</h2>
+  <p>Suppose we use the Chapter 01 Task data. These three records show only <code>id</code>, <code>title</code>, and <code>done</code> because this calculation does not need the timestamp; the stored Task still includes <code>created_at</code>.</p>
+  <pre><span class="code-label">JavaScript</span><code>const tasks = [
+  { id: 1, title: "Count stock", done: true },
+  { id: 2, title: "Review order", done: false },
+  { id: 3, title: "Print label", done: false }
+];
+
+const openTasks = tasks.filter((task) =&gt; task.done === false);
+const titles = openTasks.map((task) =&gt; task.title);
+const selected = tasks.find((task) =&gt; task.id === 2);
+
+console.log(openTasks.length); // 2
+console.log(titles);           // ["Review order", "Print label"]
+console.log(selected.title);   // "Review order"</code></pre>
+  <p><code>filter</code> keeps complete task objects, so later code can still use their IDs. <code>map</code> then changes each remaining object into a title string. <code>find</code> stops at the first matching ID. These methods return new arrays or a found value; they do not remove records from <code>tasks</code>.</p>
+  <p>In the future React chapter, this same data flow can produce a list of elements:</p>
+  <pre><span class="code-label">JSX in a React component</span><code>const visibleTasks = tasks.filter((task) =&gt; task.done === false);
+
+return (
+  &lt;ul&gt;
+    {visibleTasks.map((task) =&gt; (
+      &lt;li key={task.id}&gt;{task.title}&lt;/li&gt;
+    ))}
+  &lt;/ul&gt;
+);</code></pre>
+  <p>The stable database or locally generated <code>id</code> is the React <code>key</code>. Do not usually use the array index: when an item is inserted or removed, the index can point to a different record.</p>
+</section>
+
+<section class="lesson-section" id="errors">
+  <h2>Expected problems and unexpected errors</h2>
+  <p>Not every rejected reservation is a crashed program. Invalid quantity, missing item, and insufficient capacity are expected business outcomes; return a result the UI can explain. A network, parsing, or programmer failure is different. At a boundary such as a later API call, use <code>try</code>/<code>catch</code> to keep the screen from failing silently and to show a safe message.</p>
+  <pre><span class="code-label">JavaScript</span><code>try {
+  const result = reserve(stock, "paper", 12);
+  if (result.ok === false) {
+    console.log(result.message); // expected business feedback
+  }
+} catch (error) {
+  console.error(error);          // diagnostic detail for development
+  console.log("Could not complete the reservation.");
+}</code></pre>
+  <p>Do not use <code>catch</code> to hide every bug or show raw error details to a user. Validate at the UI for a quick response, but repeat important validation at the trusted backend or Tauri/Rust command before changing stored data. The next chapter will add asynchronous requests and JSON, where transport failures become a real concern.</p>
+</section>
+
+<section class="lesson-section" id="mistakes">
+  <h2>Common mistakes: symptom → fix</h2>
+  <ul>
+    <li><strong><code>=</code> in a condition →</strong> a value changes unexpectedly or the branch behaves strangely. Use <code>===</code> for comparison.</li>
+    <li><strong>Reading a missing <code>find</code> result →</strong> “Cannot read properties of undefined.” Check <code>item === undefined</code> before reading a property.</li>
+    <li><strong>Using <code>map</code> to select items →</strong> the array keeps its length and may contain <code>undefined</code>. Use <code>filter</code> first.</li>
+    <li><strong>Using an unstable list key →</strong> the wrong row appears to keep focus or state after a reorder. Use a stable unique ID.</li>
+    <li><strong>Mutating the source array while “transforming” →</strong> another part of the screen sees surprising data. Prefer the new arrays returned by these methods.</li>
+  </ul>
+</section>
+
+<section class="exercise" id="practice">
+  <h2>Beginner exercise</h2>
+  <p>Write <code>openTitles(tasks)</code>. It must return the titles of unfinished tasks, in their original order. Then call it with the <code>tasks</code> array above. Add one rule: if there are no unfinished tasks, return an empty array. Explain why the operation that selects records is different from the operation that changes their shape.</p>
+  <details>
+    <summary><strong>Show the worked answer and explanation</strong></summary>
+    <div class="answer">
+      <pre><span class="code-label">JavaScript</span><code>function openTitles(tasks) {
+  const openTasks = tasks.filter((task) =&gt; task.done === false);
+  return openTasks.map((task) =&gt; task.title);
+}
+
+const result = openTitles(tasks);
+console.log(result); // ["Review order", "Print label"]</code></pre>
+      <p><code>filter</code> answers “which task objects should remain?” and therefore produces zero or more task objects. <code>map</code> answers “what value should I take from each remaining object?” If every task is done, <code>filter</code> produces <code>[]</code>, and <code>map</code> also produces <code>[]</code>—no special branch is needed.</p>
+    </div>
+  </details>
+</section>
+
+<section class="lesson-section" id="recap">
+  <h2>Recap and the next bridge</h2>
+  <p>Readable application logic follows a visible path: validate inputs, locate the relevant record, apply the business rule, and return a result. <code>if</code>/<code>else</code> chooses a branch. Functions package one job and make parameters and return values explicit. <code>filter</code> selects many, <code>map</code> transforms every selected item, and <code>find</code> locates one. Expected rule failures can be returned; unexpected failures can be caught at a boundary and reported safely.</p>
+  <p>In Chapter 05, the same functions will wait for data from HTTP. You will learn promises, <code>async</code>/<code>await</code>, and JSON while keeping this chapter’s discipline: inspect the value’s shape, check failure paths, and keep UI code separate from the service and database.</p>
+</section>
+
+<section class="resource-list" id="references">
+  <h2>References for deeper study</h2>
+  <p class="small muted">These maintained references are optional extensions; the lesson examples are self-contained.</p>
+  <ul>
+    <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Control_flow_and_error_handling" target="_blank" rel="noopener noreferrer">MDN: Control flow and error handling <span aria-hidden="true">↗</span></a></li>
+    <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Functions" target="_blank" rel="noopener noreferrer">MDN: Functions, parameters, returns, and arrow functions <span aria-hidden="true">↗</span></a></li>
+    <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/map" target="_blank" rel="noopener noreferrer">MDN: <code>Array.prototype.map()</code> <span aria-hidden="true">↗</span></a></li>
+    <li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/filter" target="_blank" rel="noopener noreferrer">MDN: <code>Array.prototype.filter()</code> <span aria-hidden="true">↗</span></a></li>
+    <li><a href="https://react.dev/learn/rendering-lists" target="_blank" rel="noopener noreferrer">React: Rendering lists and choosing keys <span aria-hidden="true">↗</span></a></li>
+  </ul>
+</section>
+</article>
+<button class="mark-complete" type="button" data-complete aria-pressed="false">Mark this chapter complete</button>
+<nav class="lesson-nav" aria-label="Previous and next chapters"><a href="03-js-data.html"><small>Previous chapter</small><strong>← JavaScript values and data structures</strong></a><a href="05-async-json.html"><small>Next chapter</small><strong>Async JavaScript, HTTP, and JSON →</strong></a></nav>
+</div></main><footer class="footer"><a href="../index.html">App Builder’s Workshop</a> · Progress checkmarks stay in this browser.</footer><script src="../assets/site.js" defer></script></body></html>

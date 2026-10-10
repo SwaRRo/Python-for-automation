@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="You already know some Python. Reuse that knowledge to build a small HTTP API: functions receive validated input, apply rules, call data-access code, and return a response."><title>08 — Python refresh and FastAPI endpoints · App Builder’s Workshop</title>
+<link rel="icon" href="../assets/course-mark.svg" type="image/svg+xml"><script>(()=>{let saved=null;try{saved=localStorage.getItem("app-workshop-theme");}catch{}const theme=saved==="dark"||saved==="light"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;})();</script><link rel="stylesheet" href="../assets/site.css"></head>
+<body data-track="short" data-chapter="08-python-fastapi"><a class="skip-link" href="#main">Skip to lesson</a>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="../index.html"><img src="../assets/course-mark.svg" alt=""><span>App Builder’s Workshop</span></a><nav class="topnav" aria-label="Main navigation"><a href="index.html">All chapters</a><button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode: off</button><a class="nav-pill" href="11-capstone.html">Capstone</a></nav></div></header>
+<div class="reading-progress" aria-hidden="true"><span data-reading-progress></span></div>
+<main id="main" class="layout"><aside class="rail" aria-label="Course chapters"><div class="rail-label">Course chapters</div>
+<a href="01-app-map.html"><span class="rail-number">01</span>Map the app before writing code</a>
+<a href="02-html-css.html"><span class="rail-number">02</span>HTML, CSS, and the browser</a>
+<a href="03-js-data.html"><span class="rail-number">03</span>JavaScript values and data structures</a>
+<a href="04-js-logic.html"><span class="rail-number">04</span>Decisions, functions, and useful array methods</a>
+<a href="05-async-json.html"><span class="rail-number">05</span>Async JavaScript, HTTP, and JSON</a>
+<a href="06-react-components.html"><span class="rail-number">06</span>React components, JSX, props, and events</a>
+<a href="07-react-state.html"><span class="rail-number">07</span>React state, forms, and data-driven screens</a>
+<a href="08-python-fastapi.html" aria-current="page"><span class="rail-number">08</span>Python refresh and FastAPI endpoints</a>
+<a href="09-sqlite.html"><span class="rail-number">09</span>SQL and SQLite: persistent records</a>
+<a href="10-tauri-rust.html"><span class="rail-number">10</span>Tauri, Rust, and the desktop boundary</a>
+<a href="11-capstone.html"><span class="rail-number">11</span>Capstone: build one complete feature</a></aside><div class="main">
+<div class="crumbs"><a href="index.html">Short chapter index</a> / Chapter 08</div>
+<header class="lesson-header"><div class="eyebrow">Chapter 08 · Backend foundation</div><h1>Python refresh and FastAPI endpoints</h1><p class="lead">You already know some Python. Reuse that knowledge to build a small HTTP API: functions receive validated input, apply rules, call data-access code, and return a response.</p><div class="lesson-meta"><span>Estimated time: 50–70 min</span><span>Read, type, explain, practice</span></div></header>
+<div class="note-box short-version-note"><strong>Concise version.</strong> This preserves the earlier, shorter lesson. <a href="../chapters/08-python-fastapi.html">Open the expanded Chapter 08 lesson</a> for the full walkthrough.</div>
+<section class="outcomes"><h2>By the end, you can…</h2><ul><li>Recognize Python types, functions, dictionaries, and lists in API code.</li><li>Define FastAPI request/response models and CRUD endpoints.</li><li>Handle validation and errors at the server boundary.</li></ul></section>
+<article class="lesson-content"><section id="section-1"><h2>Python objects and type hints <a class="section-anchor" href="#section-1" aria-label="Link to Python objects and type hints">¶</a></h2><p>Python dictionaries and lists map naturally to JSON objects and arrays. Type hints make intended inputs and outputs clearer, though they do not replace runtime validation on their own.</p><pre><code>from pydantic import BaseModel
+
+class TaskCreate(BaseModel):
+    title: str
+    done: bool = False
+
+class TaskRead(TaskCreate):
+    id: int</code></pre><p>FastAPI uses Pydantic models to parse and validate request data. A request with the wrong type or missing required title receives a validation response rather than being silently accepted.</p></section>
+<section id="section-2"><h2>An endpoint is a function reached by an HTTP request <a class="section-anchor" href="#section-2" aria-label="Link to An endpoint is a function reached by an HTTP request">¶</a></h2><p>A route combines an HTTP method and path. A simple in-memory example illustrates the contract; a real app replaces the dictionary with a database repository.</p><pre><code>from fastapi import FastAPI, HTTPException
+
+app = FastAPI()
+tasks: dict[int, dict] = {}
+next_id = 1
+
+@app.get("/tasks", response_model=list[TaskRead])
+def list_tasks():
+    return list(tasks.values())
+
+@app.post("/tasks", response_model=TaskRead, status_code=201)
+def create_task(item: TaskCreate):
+    global next_id
+    saved = {"id": next_id, **item.model_dump()}
+    tasks[next_id] = saved
+    next_id += 1
+    return saved</code></pre><p>This is only a teaching sketch; in-memory data disappears when the process restarts. Real CRUD also needs read-by-ID, update, and delete operations, explicit data-access code, and tests.</p></section>
+<section id="section-3"><h2>Validation, errors, and frontend agreement <a class="section-anchor" href="#section-3" aria-label="Link to Validation, errors, and frontend agreement">¶</a></h2><p>Define what each endpoint accepts and returns. For example: <code>POST /tasks</code> accepts a title and optional done flag, then returns a saved task with an ID. Return appropriate status codes: 201 for creation, 404 when a record does not exist, and 422 for invalid input (FastAPI handles model validation). Avoid returning raw stack traces to the user.</p><p>Keep business rules on the server too. A browser can be modified; never trust the UI alone to enforce rules. Put CORS middleware in development only for the origins that need access. In production, configure the allowed origin intentionally.</p><div class="callout"><h2>From Python route to SQLite</h2><p>Keep endpoint functions understandable: parse/validate request → call a service/repository → return a response model. Avoid mixing UI concerns into the database layer. Chapter 9 introduces SQL and persistence.</p></div></section>
+<section class="exercise" id="practice"><h2>Practice it</h2><p>Write a Pydantic model for a note with title and optional archived status. Sketch GET /notes and POST /notes as Python functions. State which response fields should be generated by the server rather than trusted from the client.</p><details><summary><strong>Show answer guidance</strong></summary><div class="answer"><p>The client supplies the title and perhaps archived status. The server/database should assign the unique ID and may set created_at. A response model can expose those saved fields. For production CRUD, persist through a repository instead of the chapter’s in-memory dictionary.</p></div></details></section>
+<section class="resource-list" id="references"><h2>References for deeper study</h2><p class="small muted">The lesson is self-contained; these are optional official or well-established references.</p><ul><li><a href="https://docs.python.org/3/tutorial/" target="_blank" rel="noopener noreferrer">Python Tutorial <span aria-hidden="true">↗</span></a></li><li><a href="https://fastapi.tiangolo.com/tutorial/" target="_blank" rel="noopener noreferrer">FastAPI Tutorial <span aria-hidden="true">↗</span></a></li><li><a href="https://fastapi.tiangolo.com/tutorial/body/" target="_blank" rel="noopener noreferrer">FastAPI: Request Body <span aria-hidden="true">↗</span></a></li></ul></section>
+</article>
+<button class="mark-complete" type="button" data-complete aria-pressed="false">Mark this chapter complete</button>
+<nav class="lesson-nav" aria-label="Previous and next chapters"><a href="07-react-state.html"><small>Previous chapter</small><strong>← React state, forms, and data-driven screens</strong></a><a href="09-sqlite.html"><small>Next chapter</small><strong>SQL and SQLite: persistent records →</strong></a></nav>
+</div></main><footer class="footer"><a href="../index.html">App Builder’s Workshop</a> · Progress checkmarks stay in this browser.</footer><script src="../assets/site.js" defer></script></body></html>

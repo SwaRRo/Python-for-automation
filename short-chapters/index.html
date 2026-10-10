@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A quick-reading version of the 11-chapter beginner course for building a Tauri desktop app.">
+  <title>Short Chapters — App Builder’s Workshop</title>
+  <link rel="icon" href="../assets/course-mark.svg" type="image/svg+xml">
+  <script>(()=>{let saved=null;try{saved=localStorage.getItem("app-workshop-theme");}catch{}const theme=saved==="dark"||saved==="light"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;})();</script>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body data-track="short">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="topbar"><div class="topbar-inner">
+    <a class="brand" href="../index.html"><img src="../assets/course-mark.svg" alt=""><span>App Builder’s Workshop</span></a>
+    <nav class="topnav" aria-label="Main navigation"><a href="../index.html">Detailed course</a><button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode: off</button><a class="nav-pill" href="01-app-map.html">Start short Chapter 01 →</a></nav>
+  </div></header>
+  <div class="reading-progress" aria-hidden="true"><span data-reading-progress></span></div>
+  <main id="main" class="layout">
+    <aside class="rail" aria-label="Short course chapters"><div class="rail-label">Short chapters</div>
+      <a href="#roadmap" aria-current="page"><span class="rail-number">⌂</span>Short course map</a>
+      <a href="01-app-map.html"><span class="rail-number">01</span>Map the app</a>
+      <a href="02-html-css.html"><span class="rail-number">02</span>HTML &amp; CSS</a>
+      <a href="03-js-data.html"><span class="rail-number">03</span>JavaScript data</a>
+      <a href="04-js-logic.html"><span class="rail-number">04</span>Logic &amp; functions</a>
+      <a href="05-async-json.html"><span class="rail-number">05</span>Async &amp; JSON</a>
+      <a href="06-react-components.html"><span class="rail-number">06</span>React components</a>
+      <a href="07-react-state.html"><span class="rail-number">07</span>React state</a>
+      <a href="08-python-fastapi.html"><span class="rail-number">08</span>Python &amp; FastAPI</a>
+      <a href="09-sqlite.html"><span class="rail-number">09</span>SQL &amp; SQLite</a>
+      <a href="10-tauri-rust.html"><span class="rail-number">10</span>Tauri &amp; Rust</a>
+      <a href="11-capstone.html"><span class="rail-number">11</span>Capstone</a>
+    </aside>
+    <div class="main">
+      <div class="crumbs"><a href="../index.html">Course home</a> / Short chapters</div>
+      <section class="hero">
+        <div class="eyebrow">The concise companion · 11 chapters</div>
+        <h1>Choose the shorter reading path.</h1>
+        <p class="lead">These are the original, concise versions of the lessons. Use them when you want the key idea and a quicker refresher; each lesson links to its expanded counterpart for more explanation, examples, and practice.</p>
+        <p>Your progress here is stored separately from the expanded course. You can switch between versions whenever you like.</p>
+        <div class="hero-actions"><a class="button" href="01-app-map.html">Start with short Chapter 01 <span aria-hidden="true">→</span></a><a class="button secondary" href="../index.html">Open the detailed course</a></div>
+        <div class="status-strip"><span class="status-chip">11 concise lessons</span><span class="status-chip">Same learning sequence</span><span class="status-chip">Separate progress tracking</span></div>
+      </section>
+      <section id="roadmap">
+        <div class="section-heading"><div><div class="eyebrow">Short learning sequence</div><h2>Browse the short chapters</h2></div><p>Choose one to read; switch to detailed at any time</p></div>
+        <div class="course-progress" data-course-progress data-total="11"><span data-progress-label>0 of 11 chapters complete</span><div class="progress-track" aria-hidden="true"><span></span></div></div>
+        <p class="small muted">The checkmarks on this page are separate from those in the detailed lessons.</p>
+        <div class="roadmap">
+          <a class="chapter-card" data-chapter-card href="01-app-map.html"><span class="index">01</span><span><strong>Map the app before writing code</strong><small>Trace data through the desktop UI, backend, and storage.</small></span></a>
+          <a class="chapter-card" data-chapter-card href="02-html-css.html"><span class="index">02</span><span><strong>HTML, CSS, and the browser</strong><small>Learn semantic markup, forms, styles, and browser behavior.</small></span></a>
+          <a class="chapter-card" data-chapter-card href="03-js-data.html"><span class="index">03</span><span><strong>JavaScript values and data structures</strong><small>Name values and organize app data into records and lists.</small></span></a>
+          <a class="chapter-card" data-chapter-card href="04-js-logic.html"><span class="index">04</span><span><strong>Decisions, functions, and array methods</strong><small>Use control flow and transform lists of app records.</small></span></a>
+          <a class="chapter-card" data-chapter-card href="05-async-json.html"><span class="index">05</span><span><strong>Async JavaScript, HTTP, and JSON</strong><small>Wait for backend data and handle results without freezing the UI.</small></span></a>
+          <a class="chapter-card" data-chapter-card href="06-react-components.html"><span class="index">06</span><span><strong>React components, JSX, props, and events</strong><small>Divide a screen into reusable pieces.</small></span></a>
+          <a class="chapter-card" data-chapter-card href="07-react-state.html"><span class="index">07</span><span><strong>React state, forms, and data-driven screens</strong><small>Keep UI state and rendered content in sync.</small></span></a>
+          <a class="chapter-card" data-chapter-card href="08-python-fastapi.html"><span class="index">08</span><span><strong>Python refresh and FastAPI endpoints</strong><small>Validate input, apply rules, and return API responses.</small></span></a>
+          <a class="chapter-card" data-chapter-card href="09-sqlite.html"><span class="index">09</span><span><strong>SQL and SQLite: persistent records</strong><small>Store structured facts and keep a useful change history.</small></span></a>
+          <a class="chapter-card" data-chapter-card href="10-tauri-rust.html"><span class="index">10</span><span><strong>Tauri, Rust, and the desktop boundary</strong><small>Understand how the webview communicates with native code.</small></span></a>
+          <a class="chapter-card" data-chapter-card href="11-capstone.html"><span class="index">11</span><span><strong>Capstone: build one complete feature</strong><small>Connect a small UI action to validated, persistent data.</small></span></a>
+        </div>
+      </section>
+    </div>
+  </main>
+  <footer class="footer"><a href="../index.html">App Builder’s Workshop</a> · Short and detailed lessons are two ways to study the same course.</footer>
+  <script src="../assets/site.js" defer></script>
+</body>
+</html>

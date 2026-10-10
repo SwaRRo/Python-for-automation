@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="React helps divide a screen into reusable pieces. A component is a JavaScript function that returns JSX—markup-like syntax that describes what the UI should show."><title>06 — React components, JSX, props, and events · App Builder’s Workshop</title>
+<link rel="icon" href="../assets/course-mark.svg" type="image/svg+xml"><script>(()=>{let saved=null;try{saved=localStorage.getItem("app-workshop-theme");}catch{}const theme=saved==="dark"||saved==="light"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;})();</script><link rel="stylesheet" href="../assets/site.css"></head>
+<body data-track="short" data-chapter="06-react-components"><a class="skip-link" href="#main">Skip to lesson</a>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="../index.html"><img src="../assets/course-mark.svg" alt=""><span>App Builder’s Workshop</span></a><nav class="topnav" aria-label="Main navigation"><a href="index.html">All chapters</a><button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode: off</button><a class="nav-pill" href="11-capstone.html">Capstone</a></nav></div></header>
+<div class="reading-progress" aria-hidden="true"><span data-reading-progress></span></div>
+<main id="main" class="layout"><aside class="rail" aria-label="Course chapters"><div class="rail-label">Course chapters</div>
+<a href="01-app-map.html"><span class="rail-number">01</span>Map the app before writing code</a>
+<a href="02-html-css.html"><span class="rail-number">02</span>HTML, CSS, and the browser</a>
+<a href="03-js-data.html"><span class="rail-number">03</span>JavaScript values and data structures</a>
+<a href="04-js-logic.html"><span class="rail-number">04</span>Decisions, functions, and useful array methods</a>
+<a href="05-async-json.html"><span class="rail-number">05</span>Async JavaScript, HTTP, and JSON</a>
+<a href="06-react-components.html" aria-current="page"><span class="rail-number">06</span>React components, JSX, props, and events</a>
+<a href="07-react-state.html"><span class="rail-number">07</span>React state, forms, and data-driven screens</a>
+<a href="08-python-fastapi.html"><span class="rail-number">08</span>Python refresh and FastAPI endpoints</a>
+<a href="09-sqlite.html"><span class="rail-number">09</span>SQL and SQLite: persistent records</a>
+<a href="10-tauri-rust.html"><span class="rail-number">10</span>Tauri, Rust, and the desktop boundary</a>
+<a href="11-capstone.html"><span class="rail-number">11</span>Capstone: build one complete feature</a></aside><div class="main">
+<div class="crumbs"><a href="index.html">Short chapter index</a> / Chapter 06</div>
+<header class="lesson-header"><div class="eyebrow">Chapter 06 · Core skill</div><h1>React components, JSX, props, and events</h1><p class="lead">React helps divide a screen into reusable pieces. A component is a JavaScript function that returns JSX—markup-like syntax that describes what the UI should show.</p><div class="lesson-meta"><span>Estimated time: 40–60 min</span><span>Read, type, explain, practice</span></div></header>
+<div class="note-box short-version-note"><strong>Concise version.</strong> This preserves the earlier, shorter lesson. <a href="../chapters/06-react-components.html">Open the expanded Chapter 06 lesson</a> for the full walkthrough.</div>
+<section class="outcomes"><h2>By the end, you can…</h2><ul><li>Define and compose React function components.</li><li>Pass values through props.</li><li>Handle a user event and render a list with stable keys.</li></ul></section>
+<article class="lesson-content"><section id="section-1"><h2>Components are UI building blocks <a class="section-anchor" href="#section-1" aria-label="Link to Components are UI building blocks">¶</a></h2><p>A React component is normally a capitalized JavaScript function. It returns JSX, which resembles HTML but lives inside JavaScript.</p><pre><code>function TaskRow({ task }) {
+  return (
+    &lt;li&gt;
+      &lt;strong&gt;{task.title}&lt;/strong&gt;
+      &lt;span&gt;{task.done ? "Done" : "Open"}&lt;/span&gt;
+    &lt;/li&gt;
+  );
+}</code></pre><p>The curly braces inside JSX insert JavaScript expressions. JSX must be returned inside one parent element (a fragment <code>&lt;&gt;...&lt;/&gt;</code> is an invisible grouping element). JSX uses <code>className</code> rather than HTML’s <code>class</code>.</p></section>
+<section id="section-2"><h2>Props pass inputs downward <a class="section-anchor" href="#section-2" aria-label="Link to Props pass inputs downward">¶</a></h2><p><strong>Props</strong> are inputs supplied by a parent component. They make a child reusable. The child should treat its props as read-only and ask the parent to perform changes through a callback.</p><pre><code>function TaskList({ tasks, onSelect }) {
+  return (
+    &lt;ul&gt;
+      {tasks.map((task) =&gt; (
+        &lt;li key={task.id}&gt;
+          &lt;button onClick={() =&gt; onSelect(task.id)}&gt;
+            {task.title}
+          &lt;/button&gt;
+        &lt;/li&gt;
+      ))}
+    &lt;/ul&gt;
+  );
+}</code></pre><p>The parent uses <code>&lt;TaskList tasks={tasks} onSelect={handleSelect} /&gt;</code>. A callback prop lets the child report an event without owning the whole data model.</p></section>
+<section id="section-3"><h2>Events and rendered lists <a class="section-anchor" href="#section-3" aria-label="Link to Events and rendered lists">¶</a></h2><p>Pass an event handler function to props such as <code>onClick</code> or <code>onSubmit</code>. Usually pass the function itself, not call it during rendering: <code>onClick={handleClick}</code> is different from <code>onClick={handleClick()}</code>.</p><p>Use <code>.map()</code> to transform records into JSX elements. Every element in the list needs a stable key unique among its siblings. A database ID is usually a good key. React uses keys to understand additions, removals, and reordering; they are not merely a warning suppressor.</p><div class="note-box"><strong>What React does not do:</strong> It does not define your backend, validate data securely, or make a database. It renders a UI from inputs and responds to changes.</div></section>
+<section class="exercise" id="practice"><h2>Practice it</h2><p>Create `TaskBadge({ done })` that displays “Done” or “Open,” and a `TaskList({ tasks })` that renders each task title using `.map()`. Use a stable `task.id` key.</p><details><summary><strong>Show answer guidance</strong></summary><div class="answer"><p>A ternary is fine for the small label: <code>return &lt;span&gt;{done ? "Done" : "Open"}&lt;/span&gt;</code>. In the parent, use <code>tasks.map(task =&gt; &lt;li key={task.id}&gt;...&lt;/li&gt;)</code>. If the conditional grows, compute a named value or use an if/else statement.</p></div></details></section>
+<section class="resource-list" id="references"><h2>References for deeper study</h2><p class="small muted">The lesson is self-contained; these are optional official or well-established references.</p><ul><li><a href="https://react.dev/learn" target="_blank" rel="noopener noreferrer">React: Quick Start <span aria-hidden="true">↗</span></a></li><li><a href="https://react.dev/learn/your-first-component" target="_blank" rel="noopener noreferrer">React: Your First Component <span aria-hidden="true">↗</span></a></li><li><a href="https://react.dev/learn/rendering-lists" target="_blank" rel="noopener noreferrer">React: Rendering Lists <span aria-hidden="true">↗</span></a></li></ul></section>
+</article>
+<button class="mark-complete" type="button" data-complete aria-pressed="false">Mark this chapter complete</button>
+<nav class="lesson-nav" aria-label="Previous and next chapters"><a href="05-async-json.html"><small>Previous chapter</small><strong>← Async JavaScript, HTTP, and JSON</strong></a><a href="07-react-state.html"><small>Next chapter</small><strong>React state, forms, and data-driven screens →</strong></a></nav>
+</div></main><footer class="footer"><a href="../index.html">App Builder’s Workshop</a> · Progress checkmarks stay in this browser.</footer><script src="../assets/site.js" defer></script></body></html>

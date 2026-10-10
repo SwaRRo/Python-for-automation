@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="State is the information a component remembers. When you update state with its setter, React renders again so the screen reflects the new information."><title>07 — React state, forms, and data-driven screens · App Builder’s Workshop</title>
+<link rel="icon" href="../assets/course-mark.svg" type="image/svg+xml"><script>(()=>{let saved=null;try{saved=localStorage.getItem("app-workshop-theme");}catch{}const theme=saved==="dark"||saved==="light"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;})();</script><link rel="stylesheet" href="../assets/site.css"></head>
+<body data-chapter="07-react-state"><a class="skip-link" href="#main">Skip to lesson</a>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="../index.html"><img src="../assets/course-mark.svg" alt=""><span>App Builder’s Workshop</span></a><nav class="topnav" aria-label="Main navigation"><a href="../index.html#roadmap">All chapters</a><button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode: off</button><a class="nav-pill" href="11-capstone.html">Capstone</a></nav></div></header>
+<div class="reading-progress" aria-hidden="true"><span data-reading-progress></span></div>
+<main id="main" class="layout"><aside class="rail" aria-label="Course chapters"><div class="rail-label">Course chapters</div>
+<a href="01-app-map.html"><span class="rail-number">01</span>Map the app before writing code</a>
+<a href="02-html-css.html"><span class="rail-number">02</span>HTML, CSS, and the browser</a>
+<a href="03-js-data.html"><span class="rail-number">03</span>JavaScript values and data structures</a>
+<a href="04-js-logic.html"><span class="rail-number">04</span>Decisions, functions, and useful array methods</a>
+<a href="05-async-json.html"><span class="rail-number">05</span>Async JavaScript, HTTP, and JSON</a>
+<a href="06-react-components.html"><span class="rail-number">06</span>React components, JSX, props, and events</a>
+<a href="07-react-state.html" aria-current="page"><span class="rail-number">07</span>React state, forms, and data-driven screens</a>
+<a href="08-python-fastapi.html"><span class="rail-number">08</span>Python refresh and FastAPI endpoints</a>
+<a href="09-sqlite.html"><span class="rail-number">09</span>SQL and SQLite: persistent records</a>
+<a href="10-tauri-rust.html"><span class="rail-number">10</span>Tauri, Rust, and the desktop boundary</a>
+<a href="11-capstone.html"><span class="rail-number">11</span>Capstone: build one complete feature</a></aside><div class="main">
+<div class="crumbs"><a href="../index.html">Course home</a> / Chapter 07</div>
+<header class="lesson-header"><div class="eyebrow">Chapter 07 · Core skill</div><h1>React state, forms, and data-driven screens</h1><p class="lead">State is the information a component remembers. When you update state with its setter, React renders again so the screen reflects the new information.</p><div class="lesson-meta"><span>Estimated time: 45–65 min</span><span>Read, type, explain, practice</span></div></header>
+<article class="lesson-content">
+<section class="lesson-section" id="purpose">
+  <h2>Purpose: make a screen remember and respond</h2>
+  <p>A static React component can display a task list, but a useful app must remember what the person is typing, which task is selected, and whether a request is still running. This chapter connects the JavaScript data and async ideas from Chapters 03–05 to the React components from Chapter 06. You will build a small, honest task screen: the form is controlled by React, the list is rendered from records, and every request has a visible loading, error, success, or empty state.</p>
+  <div class="outcomes">
+    <h2>By the end, you can…</h2>
+    <ul>
+      <li>Explain why <code>useState</code> is different from an ordinary local variable.</li>
+      <li>Update objects and arrays by replacing them instead of mutating them.</li>
+      <li>Connect a controlled form to validation and an async save.</li>
+      <li>Render lists with stable record IDs and handle all meaningful request states.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="lesson-section" id="mental-model">
+  <h2>Vocabulary and a useful mental model</h2>
+  <dl class="glossary">
+    <dt>State</dt><dd>Data a component remembers between renders, such as a draft title or a list of tasks.</dd>
+    <dt>Setter</dt><dd>The function returned by <code>useState</code>. Calling it asks React to remember a new value and render again.</dd>
+    <dt>Controlled input</dt><dd>A form field whose current <code>value</code> comes from React state and whose <code>onChange</code> updates that state.</dd>
+    <dt>Immutable update</dt><dd>A replacement update: create a new array or object rather than changing the old one in place.</dd>
+    <dt>Key</dt><dd>A stable identity for one item among its siblings. A database ID is usually the right key.</dd>
+  </dl>
+  <p>Think of rendering as a photograph. React takes the current state, calculates the JSX picture, and puts that picture in the browser. An ordinary variable is redrawn from scratch on the next render, so it cannot be the component’s memory. State supplies both memory and a signal to take a new photograph.</p>
+  <pre><span class="code-label">jsx</span><code>import { useState } from "react";
+
+function Counter() {
+  const [count, setCount] = useState(0);
+
+  return (
+    &lt;button onClick={() =&gt; setCount(count + 1)}&gt;
+      Clicked {count} times
+    &lt;/button&gt;
+  );
+}</code></pre>
+  <p><code>useState(0)</code> gives the initial number. Array destructuring names the number <code>count</code> and its setter <code>setCount</code>. The click handler does not edit the button directly; it requests a new value. React renders again, and <code>{count}</code> then displays that value.</p>
+</section>
+
+<section class="lesson-section" id="worked-example">
+  <h2>Worked example: a task screen, one decision at a time</h2>
+  <p>Use the shared Task contract from Chapter 01: the server supplies a stable integer <code>id</code>, trimmed <code>title</code>, <code>done</code> boolean, and <code>created_at</code> timestamp. The create request sends only <code>title</code>. Updating the screen from server-returned records prevents a temporary browser ID from being mistaken for a saved database ID.</p>
+  <pre><span class="code-label">jsx</span><code>import { useEffect, useState } from "react";
+
+const TASKS_URL = "/api/tasks";
+
+async function requestJson(url, options) {
+  const response = await fetch(url, options);
+  const body = response.status === 204
+    ? null
+    : await response.json().catch(() =&gt; null);
+
+  if (!response.ok) {
+    const detail = typeof body?.detail === "string"
+      ? body.detail
+      : `Request failed (${response.status})`;
+    throw new Error(detail);
+  }
+  return body;
+}
+
+export default function TaskScreen() {
+  const [tasks, setTasks] = useState([]);
+  const [title, setTitle] = useState("");
+  const [status, setStatus] = useState("loading");
+  const [message, setMessage] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [reloadNumber, setReloadNumber] = useState(0);
+
+  useEffect(() =&gt; {
+    let ignoreResult = false;
+    async function loadTasks() {
+      setStatus("loading");
+      try {
+        const records = await requestJson(TASKS_URL);
+        if (!Array.isArray(records)) throw new Error("The API did not return a task list.");
+        if (!ignoreResult) {
+          setTasks(records);
+          setStatus("ready");
+          setMessage("");
+        }
+      } catch (error) {
+        if (!ignoreResult) {
+          setMessage(error instanceof Error ? error.message : "The list could not load.");
+          setStatus("error");
+        }
+      }
+    }
+    void loadTasks();
+    return () =&gt; { ignoreResult = true; };
+  }, [reloadNumber]);
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    const cleanTitle = title.trim();
+    if (!cleanTitle || cleanTitle.length &gt; 120) {
+      setMessage("Enter a task title from 1 to 120 characters.");
+      return;
+    }
+
+    setIsSaving(true);
+    setMessage("");
+    try {
+      const saved = await requestJson(TASKS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: cleanTitle }),
+      });
+      if (!saved || typeof saved.id !== "number") throw new Error("The API did not return a saved Task.");
+      setTasks((current) =&gt; [...current, saved]);
+      setTitle("");
+      setMessage("Task saved.");
+      setStatus("ready");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The task could not be saved.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function toggleDone(task) {
+    setIsSaving(true);
+    setMessage("");
+    try {
+      const saved = await requestJson(`${TASKS_URL}/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ done: !task.done }),
+      });
+      if (!saved || typeof saved.id !== "number") throw new Error("The API did not return the updated Task.");
+      setTasks((current) =&gt; current.map((item) =&gt; item.id === saved.id ? saved : item));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The task could not be updated.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  if (status === "loading") return &lt;p role="status"&gt;Loading tasks…&lt;/p&gt;;
+  if (status === "error") {
+    return (
+      &lt;section&gt;
+        &lt;p role="alert"&gt;{message}&lt;/p&gt;
+        &lt;button type="button" onClick={() =&gt; setReloadNumber((n) =&gt; n + 1)}&gt;Try again&lt;/button&gt;
+      &lt;/section&gt;
+    );
+  }
+
+  return (
+    &lt;section&gt;
+      &lt;form onSubmit={handleSubmit}&gt;
+        &lt;label htmlFor="task-title"&gt;Task title&lt;/label&gt;
+        &lt;input id="task-title" value={title} maxLength={120}
+          onChange={(event) =&gt; setTitle(event.target.value)} disabled={isSaving} /&gt;
+        &lt;button type="submit" disabled={isSaving}&gt;{isSaving ? "Saving…" : "Add task"}&lt;/button&gt;
+      &lt;/form&gt;
+      {message &amp;&amp; &lt;p role="status"&gt;{message}&lt;/p&gt;}
+      {tasks.length === 0 ? &lt;p&gt;No tasks yet. Add the first one.&lt;/p&gt; : (
+        &lt;ul&gt;
+          {tasks.map((task) =&gt; (
+            &lt;li key={task.id}&gt;
+              &lt;button type="button" disabled={isSaving} onClick={() =&gt; toggleDone(task)}&gt;
+                {task.done ? "Mark open" : "Mark done"}
+              &lt;/button&gt;
+              &lt;span&gt;{task.title}&lt;/span&gt;
+              &lt;time dateTime={task.created_at}&gt;{task.created_at}&lt;/time&gt;
+            &lt;/li&gt;
+          ))}
+        &lt;/ul&gt;
+      )}
+    &lt;/section&gt;
+  );
+}</code></pre>
+  <h3>Follow the data flow</h3>
+  <ol>
+    <li><strong>Initial render:</strong> <code>tasks</code> is an empty array, <code>title</code> is an empty string, and <code>status</code> is <code>"loading"</code>. The early return tells the user what is happening instead of showing a misleading empty list.</li>
+    <li><strong>Loading:</strong> <code>useEffect</code> runs after the first render and again whenever <code>reloadNumber</code> changes, so the retry button can request the list again. It asks the HTTP endpoint for JSON. It does not talk to SQLite: React calls an API boundary, while FastAPI or a Tauri/Rust command owns the data operation.</li>
+    <li><strong>Success or error:</strong> A non-2xx response is treated as failure. On success, the response array becomes state and <code>status</code> becomes <code>"ready"</code>. On failure, the message becomes visible through an alert.</li>
+    <li><strong>Typing:</strong> The input displays <code>title</code>. Every change event reads <code>event.target.value</code> synchronously and stores it with <code>setTitle</code>. React is now the source of truth for the draft.</li>
+    <li><strong>Submitting:</strong> <code>preventDefault()</code> stops a full-page navigation. Trimming and the length check give immediate feedback. The handler sends only <code>{ title }</code> to <code>POST /api/tasks</code>, then adds the full server-returned Task—including its database ID and timestamp—only after success.</li>
+    <li><strong>Updating a record:</strong> <code>map</code> creates a new array. Only the matching task gets a new object via <code>{...task}</code>; every other task is returned unchanged. The new boolean is derived from the old one.</li>
+    <li><strong>Rendering:</strong> <code>map</code> turns each record into one list item. <code>key={task.id}</code> lets React match that task even if another task is inserted, removed, or reordered.</li>
+  </ol>
+  <div class="callout">
+    <h2>State is a view of saved data</h2>
+    <p>This worked example waits for the API before changing a persisted record in React state. The browser calls the development-only <code>/api</code> proxy described in Chapter 05; FastAPI owns validation and SQLite writes. React does not query SQLite directly. A packaged app must choose a real Tauri/Rust command or a managed FastAPI sidecar as explained in Chapter 10.</p>
+  </div>
+</section>
+
+<section class="lesson-section" id="immutable-updates">
+  <h2>Immutable updates: replace, do not secretly edit</h2>
+  <p>Methods such as <code>push</code>, <code>pop</code>, <code>splice</code>, and direct assignment change an existing array. In state, prefer operations that return replacements:</p>
+  <ul>
+    <li>Add: <code>setTasks(current =&gt; [...current, newTask])</code>.</li>
+    <li>Remove: <code>setTasks(current =&gt; current.filter(task =&gt; task.id !== taskId))</code>.</li>
+    <li>Update one object: <code>setTasks(current =&gt; current.map(task =&gt; task.id === taskId ? {...task, done: true} : task))</code>.</li>
+  </ul>
+  <p>The functional form, <code>current =&gt;</code>, is useful when the next value depends on the previous one. It prevents a quick series of events from calculating against an outdated variable. For nested objects, copy each level that changes; do not mutate a nested property through the old reference.</p>
+</section>
+
+<section class="lesson-section" id="states">
+  <h2>Loading, error, success, and empty are different facts</h2>
+  <p>A blank list can mean “still loading,” “the server failed,” or “there are no records.” Those are different experiences and need different UI. A small status state such as <code>"loading"</code>, <code>"ready"</code>, and <code>"error"</code> prevents contradictory messages. When saving, add a separate <code>saving</code> boolean if necessary so the submit button can be disabled and duplicate requests avoided.</p>
+  <p>For an effect that depends on a changing ID, protect against an older response arriving late. A cleanup flag can ignore a result that is no longer relevant. In a larger app, a data-fetching cache may be preferable; the important beginner lesson is that network uncertainty must be represented rather than hidden.</p>
+</section>
+
+<section class="mistake" id="mistakes">
+  <h2>Common mistake → symptom → fix</h2>
+  <ul>
+    <li><strong>Mutating with <code>tasks.push(newTask)</code> →</strong> the list may not update, or another component sees surprising data. <strong>Fix:</strong> use a setter with <code>[...current, newTask]</code>.</li>
+    <li><strong>Using <code>key={index}</code> →</strong> after deleting or reordering, the wrong row can keep focus or local state. <strong>Fix:</strong> use a stable ID from the record; never generate a new key during rendering.</li>
+    <li><strong>Using <code>value={title}</code> without <code>onChange</code> →</strong> the field is read-only. <strong>Fix:</strong> update state from <code>event.target.value</code>, or intentionally use <code>defaultValue</code> for an uncontrolled field.</li>
+    <li><strong>Showing “No tasks” while loading →</strong> users think their records disappeared. <strong>Fix:</strong> check loading and error before the empty condition.</li>
+    <li><strong>Calling a successful local update “saved” →</strong> data vanishes after restart. <strong>Fix:</strong> only report persistence after the backend or Rust command confirms it.</li>
+  </ul>
+</section>
+
+<section class="exercise" id="practice">
+  <h2>Beginner exercise</h2>
+  <p>Add a “Delete” button to the worked task list. It should remove only the clicked task, refuse a blank title, and show “No tasks yet” when the last task is gone. Before reading the answer, say aloud which value changes, which new array is created, and where the stable key comes from.</p>
+  <details><summary><strong>Show the worked answer and explanation</strong></summary>
+    <div class="answer">
+      <pre><span class="code-label">jsx</span><code>async function deleteTask(taskId) {
+  setIsSaving(true);
+  setMessage("");
+  try {
+    await requestJson(`${TASKS_URL}/${taskId}`, { method: "DELETE" });
+    setTasks((current) =&gt; current.filter((task) =&gt; task.id !== taskId));
+    setMessage("Task deleted.");
+  } catch (error) {
+    setMessage(error instanceof Error ? error.message : "The task could not be deleted.");
+  } finally {
+    setIsSaving(false);
+  }
+}
+
+// Inside the task map:
+&lt;button type="button" disabled={isSaving} onClick={() =&gt; deleteTask(task.id)}&gt;
+  Delete
+&lt;/button&gt;</code></pre>
+      <p>The click passes the record’s stable ID, not its position. The worked answer first waits for the API’s <code>204 No Content</code>; only then does <code>filter</code> make a replacement array without that record. If the request fails, the row remains visible so the screen does not claim a deletion that never happened.</p>
+    </div>
+  </details>
+</section>
+
+<section class="lesson-section" id="recap">
+  <h2>Recap and next-step bridge</h2>
+  <p>State is component memory plus a re-render request. Controlled inputs make the draft explicit. Immutable array and object updates give React clear replacement values. Stable keys preserve each record’s identity. A data-driven screen is not complete until it distinguishes loading, error, success, and empty outcomes. Finally, React state is a view model, not a database: persistence belongs behind an intentional Tauri/Rust or FastAPI boundary.</p>
+  <p>In Chapter 08, you will refresh Python and build FastAPI endpoints that validate the task shape. Bring this chapter’s flow with you: form input becomes a request, the backend validates it, and the response becomes trustworthy UI state.</p>
+</section>
+
+<section class="resource-list" id="references">
+  <h2>References for deeper study</h2>
+  <p class="small muted">These maintained React documentation pages are optional extensions.</p>
+  <ul>
+    <li><a href="https://react.dev/learn/state-a-components-memory" target="_blank" rel="noopener noreferrer">React: State, a Component’s Memory <span aria-hidden="true">↗</span></a></li>
+    <li><a href="https://react.dev/reference/react-dom/components/input" target="_blank" rel="noopener noreferrer">React DOM: input and controlled fields <span aria-hidden="true">↗</span></a></li>
+    <li><a href="https://react.dev/learn/updating-arrays-in-state" target="_blank" rel="noopener noreferrer">React: Updating Arrays in State <span aria-hidden="true">↗</span></a></li>
+    <li><a href="https://react.dev/learn/rendering-lists" target="_blank" rel="noopener noreferrer">React: Rendering Lists and stable keys <span aria-hidden="true">↗</span></a></li>
+    <li><a href="https://react.dev/learn/synchronizing-with-effects" target="_blank" rel="noopener noreferrer">React: Synchronizing with Effects <span aria-hidden="true">↗</span></a></li>
+  </ul>
+</section>
+</article>
+<button class="mark-complete" type="button" data-complete aria-pressed="false">Mark this chapter complete</button>
+<nav class="lesson-nav" aria-label="Previous and next chapters"><a href="06-react-components.html"><small>Previous chapter</small><strong>← React components, JSX, props, and events</strong></a><a href="08-python-fastapi.html"><small>Next chapter</small><strong>Python refresh and FastAPI endpoints →</strong></a></nav>
+</div></main><footer class="footer"><a href="../index.html">App Builder’s Workshop</a> · Progress checkmarks stay in this browser.</footer><script src="../assets/site.js" defer></script></body></html>

@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Learn the moving parts of a desktop application and trace a single piece of data through the interface, backend, and storage. This map will make every later chapter easier to place."><title>01 — Map the app before writing code · App Builder’s Workshop</title>
+<link rel="icon" href="../assets/course-mark.svg" type="image/svg+xml"><script>(()=>{let saved=null;try{saved=localStorage.getItem("app-workshop-theme");}catch{}const theme=saved==="dark"||saved==="light"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;})();</script><link rel="stylesheet" href="../assets/site.css"></head>
+<body data-chapter="01-app-map"><a class="skip-link" href="#main">Skip to lesson</a>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="../index.html"><img src="../assets/course-mark.svg" alt=""><span>App Builder’s Workshop</span></a><nav class="topnav" aria-label="Main navigation"><a href="../index.html#roadmap">All chapters</a><button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode: off</button><a class="nav-pill" href="11-capstone.html">Capstone</a></nav></div></header>
+<div class="reading-progress" aria-hidden="true"><span data-reading-progress></span></div>
+<main id="main" class="layout"><aside class="rail" aria-label="Course chapters"><div class="rail-label">Course chapters</div>
+<a href="01-app-map.html" aria-current="page"><span class="rail-number">01</span>Map the app before writing code</a>
+<a href="02-html-css.html"><span class="rail-number">02</span>HTML, CSS, and the browser</a>
+<a href="03-js-data.html"><span class="rail-number">03</span>JavaScript values and data structures</a>
+<a href="04-js-logic.html"><span class="rail-number">04</span>Decisions, functions, and useful array methods</a>
+<a href="05-async-json.html"><span class="rail-number">05</span>Async JavaScript, HTTP, and JSON</a>
+<a href="06-react-components.html"><span class="rail-number">06</span>React components, JSX, props, and events</a>
+<a href="07-react-state.html"><span class="rail-number">07</span>React state, forms, and data-driven screens</a>
+<a href="08-python-fastapi.html"><span class="rail-number">08</span>Python refresh and FastAPI endpoints</a>
+<a href="09-sqlite.html"><span class="rail-number">09</span>SQL and SQLite: persistent records</a>
+<a href="10-tauri-rust.html"><span class="rail-number">10</span>Tauri, Rust, and the desktop boundary</a>
+<a href="11-capstone.html"><span class="rail-number">11</span>Capstone: build one complete feature</a></aside><div class="main">
+<div class="crumbs"><a href="../index.html">Course home</a> / Chapter 01</div>
+<header class="lesson-header"><div class="eyebrow">Chapter 01 · Start here</div><h1>Map the app before writing code</h1><p class="lead">Learn the moving parts of a desktop application and trace a single piece of data through the interface, backend, and storage. This map will make every later chapter easier to place.</p><div class="lesson-meta"><span>Estimated time: 25–40 min</span><span>Read, type, explain, practice</span></div></header>
+<article class="lesson-content">
+<section id="purpose" class="lesson-section">
+  <h2>Purpose: draw the route before you build the road</h2>
+  <p>A desktop app is not one big program. It is a set of parts that cooperate across boundaries. Before writing buttons or database queries, you should be able to point at each part and explain its job. In this course, our running example is a small task list: a person types <strong>Prepare monthly report</strong>, saves it, and later sees it in a list.</p>
+  <div class="outcomes">
+    <h2>By the end, you can…</h2>
+    <ul>
+      <li>Separate the interface, application rules, data access, and persistence layers.</li>
+      <li>Trace one task from a form to SQLite and back to the rendered list.</li>
+      <li>Explain the two valid desktop choices: a Tauri/Rust command or a separate FastAPI sidecar.</li>
+      <li>Describe what changes between development on your computer and a packaged app.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="mental-model" class="lesson-section">
+  <h2>A vocabulary and mental model</h2>
+  <p>Think of the app as a workshop with four stations. The <strong>presentation layer</strong> shows fields, buttons, and lists. <strong>Application logic</strong> checks rules such as “a task needs a title.” <strong>Data access</strong> translates a request into a database operation. <strong>Persistence</strong> is where the record remains after the app closes.</p>
+  <dl class="glossary">
+    <dt>HTML</dt><dd>Structure for headings, forms, buttons, and lists.</dd>
+    <dt>CSS</dt><dd>Rules for appearance and layout; it does not save data.</dd>
+    <dt>JavaScript</dt><dd>Code in the webview that responds to events and moves data.</dd>
+    <dt>React</dt><dd>A JavaScript library for composing interface components and rendering from state.</dd>
+    <dt>FastAPI</dt><dd>A Python web framework that exposes typed HTTP endpoints.</dd>
+    <dt>SQLite</dt><dd>A relational SQL engine that normally stores tables in a local database file.</dd>
+    <dt>Tauri</dt><dd>A desktop shell that hosts a webview and connects it to native code.</dd>
+    <dt>Rust command</dt><dd>A trusted Tauri function that the frontend can invoke through Tauri’s message boundary.</dd>
+    <dt>Sidecar</dt><dd>A separate executable bundled with or launched by the desktop app, such as a Python API server.</dd>
+  </dl>
+  <p>One important boundary is easy to miss: <strong>React does not query SQLite directly</strong>. React runs in a webview. A trusted Rust command or a local API receives a request, validates it, and performs the privileged database work. This boundary makes responsibilities visible and prevents the interface from having unrestricted access to files.</p>
+</section>
+
+<section id="worked-example" class="lesson-section">
+  <h2>Worked example: follow one task all the way through</h2>
+  <p>Use this sequence whenever a feature feels confusing. We will follow the value <code>Prepare monthly report</code> as it changes shape.</p>
+  <ol>
+    <li><strong>Input and UI state.</strong> The user types into an HTML input. React keeps the current text in a JavaScript string so the screen and the program agree about what is being edited.</li>
+    <li><strong>Save event.</strong> Clicking the button calls a function. The function trims accidental spaces and refuses an empty title before crossing the boundary.</li>
+    <li><strong>Request contract.</strong> The frontend sends a small object with a known field name. A contract is an agreement about names, types, and what comes back.</li>
+  </ol>
+  <pre><span class="code-label">JavaScript · frontend shape</span><code>const draft = { title: "Prepare monthly report" };
+
+async function saveTask() {
+  const title = draft.title.trim();
+  if (!title) return;
+  const saved = await sendTask({ title });
+  showTask(saved);
+}</code></pre>
+  <p><code>const draft</code> is an object with one string property. <code>trim()</code> removes leading and trailing whitespace. The early <code>return</code> stops an invalid save. <code>await</code> means the function pauses until the boundary returns; it does not pretend that disk or network work is instantaneous. The names <code>title</code> and <code>saved</code> make the direction of the data readable.</p>
+  <ol start="4">
+    <li><strong>Choose one trusted boundary.</strong> In a direct Tauri design, <code>sendTask</code> invokes a Rust command. In a FastAPI design, it makes an HTTP <code>POST</code> request to a local service. These are distinct choices, not two automatic layers.</li>
+    <li><strong>Validate and write.</strong> The receiving side checks the title, runs the application rule, and asks SQLite to insert a row. SQLite assigns an ID, which lets the app refer to this task later.</li>
+  </ol>
+  <pre><span class="code-label">Python · create request model</span><code>from pydantic import BaseModel, Field
+
+class TaskCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=120)</code></pre>
+  <p><code>TaskCreate</code> describes only client-owned input. FastAPI parses and validates that JSON before route logic runs. The backend—not the form—generates the ID and timestamp when it saves the record. The complete endpoint appears in Chapter 08; do not treat this request model as a complete route.</p>
+  <pre><span class="code-label">SQL · parameterized insert</span><code>INSERT INTO tasks (title, done)
+VALUES (?, ?);
+-- Bound values supplied separately by sqlite3: (title, 0)</code></pre>
+  <p>The question marks are placeholders: Python sends the SQL text and values such as <code>(title, 0)</code> separately. That makes a title containing an apostrophe ordinary data, not executable SQL. The data-access layer owns the table and parameter details so the UI does not need to know them.</p>
+  <ol start="6">
+    <li><strong>Return and render.</strong> The response travels back as an object such as <code>{"id": 7, "title": "Prepare monthly report", "done": false, "created_at": "2026-10-06T08:30:00Z"}</code>. React adds it to its list state, then renders a row. The user sees the result because the screen is derived from current state, not because React opened the database file.</li>
+  </ol>
+  <p>The whole route is:</p>
+  <pre><span class="code-label">Data flow</span><code>typed title
+  → React form state
+  → save handler
+  → Rust command OR FastAPI POST
+  → validation and application rules
+  → SQLite INSERT
+  → saved record response
+  → React list state
+  → rendered task row</code></pre>
+  <div class="callout">
+    <h2>Why label every arrow?</h2>
+    <p>Every arrow is a possible failure point or shape change: a string becomes JSON, JSON becomes a Python model, and a row becomes a response object. Naming the boundary tells you where to validate and test.</p>
+  </div>
+</section>
+
+<section id="task-contract" class="lesson-section">
+  <h2>The course-wide Task contract</h2>
+  <p>To make the later chapters fit together, we will keep one small record shape from JavaScript through Python and SQLite. When an example shows only the fields a screen needs, it is a <em>view projection</em>; it is not a different saved record.</p>
+  <pre><span class="code-label">Shared contract · fields and API</span><code>Task = {
+  id: integer chosen by SQLite,
+  title: trimmed string, 1–120 characters,
+  done: boolean, initially false,
+  created_at: UTC ISO-8601 string chosen by the backend
+}
+
+POST /tasks   request {"title": "Prepare report"}  → 201 + saved Task
+GET  /tasks   response Task[] (a bare JSON array)
+PATCH /tasks/{id} request {"done": true}            → 200 + saved Task
+DELETE /tasks/{id}                                  → 204, no body
+
+Unknown id → 404     Invalid input → 422</code></pre>
+  <p>The database assigns the ID; the backend owns the timestamp. The client sends only the title when creating and sends a Boolean when marking a task done. A 422 means the request data or business rule is invalid; a 404 means the requested record does not exist. The same names and shapes appear again in Chapters 03, 05, 07, 08, 09, and 11.</p>
+</section>
+
+<section id="architecture-choices" class="lesson-section">
+  <h2>Development architecture versus packaged architecture</h2>
+  <p>During development, you may run the frontend dev server, Tauri, and FastAPI in separate terminals. This is convenient for errors and quick restarts, but do not assume those processes will magically exist for a user.</p>
+  <h3>Choice A: Tauri/Rust commands</h3>
+  <p>The React frontend invokes a Tauri command. Rust validates the arguments and can use a SQLite library or a Tauri database plugin. When packaged, the command is compiled into the app, so there is no Python server to start. This can reduce lifecycle work and keep the local boundary inside the desktop process. You still need careful permissions, error handling, migrations, and tests.</p>
+  <h3>Choice B: FastAPI as a sidecar</h3>
+  <p>The Tauri host launches a separately packaged Python executable, and the frontend talks to its loopback HTTP address. The sidecar must be built for each target platform, started at the right time, stopped when the app closes, and restricted to safe arguments and local networking. This choice preserves Python code and can be useful when your rules already belong in Python, but it adds process, port, packaging, and security decisions.</p>
+  <p>In both choices, the webview is the presentation client. In neither choice does Tauri automatically host FastAPI, nor does putting files beside the app automatically make them a database API.</p>
+  <div class="note-box"><strong>Development:</strong> What process, port, or command is running, and where are errors visible? <br><strong>Packaging:</strong> What ships, who starts it, where is the database, and how are permissions and shutdown handled?</div>
+</section>
+
+<section id="mistakes" class="lesson-section">
+  <h2>Common mistakes: symptom, cause, fix</h2>
+  <ul>
+    <li><strong>Mistake:</strong> “React writes to <code>tasks.db</code>.” <strong>Symptom:</strong> the design asks browser code to open a local file or SQLite library directly. <strong>Fix:</strong> route the operation through a Rust command or FastAPI endpoint and validate at that boundary.</li>
+    <li><strong>Mistake:</strong> treating FastAPI as part of Tauri by default. <strong>Symptom:</strong> the development app works only while a manually started terminal is open. <strong>Fix:</strong> either choose direct Rust commands or explicitly plan a sidecar’s binary, lifecycle, loopback address, and permissions.</li>
+    <li><strong>Mistake:</strong> changing field names between layers. <strong>Symptom:</strong> the UI sends <code>taskTitle</code> but the backend expects <code>title</code>, so validation fails or a blank row appears. <strong>Fix:</strong> write one tiny contract and reuse its names in the form, request model, SQL mapping, and response.</li>
+    <li><strong>Mistake:</strong> showing success before persistence finishes. <strong>Symptom:</strong> a task appears, then disappears after reload. <strong>Fix:</strong> wait for the save response, handle errors, and update the list with the returned record.</li>
+  </ul>
+</section>
+
+<section id="practice" class="exercise lesson-section">
+  <h2>Beginner exercise: draw and explain the map</h2>
+  <p>On paper or in a text file, draw boxes for <strong>React UI</strong>, <strong>one boundary</strong>, <strong>validation/application rules</strong>, and <strong>SQLite</strong>. Draw arrows for both “load tasks” and “save task.” Choose either a Rust command or FastAPI sidecar, then answer: where does the task title first become JSON, where is it checked, and what value returns to the UI?</p>
+  <details>
+    <summary><strong>Show a worked answer and explanation</strong></summary>
+    <div class="answer">
+      <p>Direct command: React state → Tauri <code>invoke("create_task", { title })</code> → Rust validates and writes SQLite → task object → React list. Sidecar: React state → HTTP <code>POST /tasks</code> JSON → FastAPI validates → Python writes SQLite → JSON response → React list.</p>
+      <p>The important part is not drawing identical boxes. It is naming the owner of each job and identifying the return value, such as <code>id: 7</code>. If your diagram has React opening the database, redraw that arrow through a trusted boundary.</p>
+    </div>
+  </details>
+</section>
+
+<section id="recap" class="lesson-section">
+  <h2>Recap and your next step</h2>
+  <p>You now have a map: interface state starts a request; a trusted boundary validates it; application logic asks a data-access layer to write SQLite; a response returns an identified record; React renders from state. Tauri/Rust commands and FastAPI sidecars can both implement the boundary, but their process lifecycle and packaging costs differ.</p>
+  <p>Next, Chapter 02 zooms into the browser. You will build the form and list with HTML and CSS before adding JavaScript. Keep these arrows beside you: every feature should remain a journey from screen to storage and back.</p>
+</section>
+
+<section id="references" class="resource-list lesson-section">
+  <h2>Official references</h2>
+  <p class="small muted">These links are optional extensions; the lesson does not require prior framework knowledge.</p>
+  <ul>
+    <li><a href="https://v2.tauri.app/concept/architecture/" target="_blank" rel="noopener noreferrer">Tauri v2 architecture</a> — webview, Rust host, and message passing.</li>
+    <li><a href="https://v2.tauri.app/develop/calling-rust/" target="_blank" rel="noopener noreferrer">Tauri: calling Rust from the frontend</a> — commands, arguments, results, and errors.</li>
+    <li><a href="https://v2.tauri.app/develop/sidecar/" target="_blank" rel="noopener noreferrer">Tauri: embedding external binaries</a> — the sidecar packaging and permission model.</li>
+    <li><a href="https://fastapi.tiangolo.com/tutorial/body/" target="_blank" rel="noopener noreferrer">FastAPI request bodies</a> — typed JSON input and validation.</li>
+    <li><a href="https://www.sqlite.org/docs.html" target="_blank" rel="noopener noreferrer">SQLite documentation</a> — database files, SQL, and reliability topics.</li>
+  </ul>
+</section>
+</article>
+<button class="mark-complete" type="button" data-complete aria-pressed="false">Mark this chapter complete</button>
+<nav class="lesson-nav" aria-label="Previous and next chapters"><a href="../index.html"><small>Course home</small><strong>← Roadmap</strong></a><a href="02-html-css.html"><small>Next chapter</small><strong>HTML, CSS, and the browser →</strong></a></nav>
+</div></main><footer class="footer"><a href="../index.html">App Builder’s Workshop</a> · Progress checkmarks stay in this browser.</footer><script src="../assets/site.js" defer></script></body></html>

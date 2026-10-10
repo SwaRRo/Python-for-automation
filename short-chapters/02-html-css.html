@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Before React, learn the browser’s basic materials: semantic markup, forms, and styles. React will still use these same browser elements."><title>02 — HTML, CSS, and the browser · App Builder’s Workshop</title>
+<link rel="icon" href="../assets/course-mark.svg" type="image/svg+xml"><script>(()=>{let saved=null;try{saved=localStorage.getItem("app-workshop-theme");}catch{}const theme=saved==="dark"||saved==="light"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;})();</script><link rel="stylesheet" href="../assets/site.css"></head>
+<body data-track="short" data-chapter="02-html-css"><a class="skip-link" href="#main">Skip to lesson</a>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="../index.html"><img src="../assets/course-mark.svg" alt=""><span>App Builder’s Workshop</span></a><nav class="topnav" aria-label="Main navigation"><a href="index.html">All chapters</a><button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode: off</button><a class="nav-pill" href="11-capstone.html">Capstone</a></nav></div></header>
+<div class="reading-progress" aria-hidden="true"><span data-reading-progress></span></div>
+<main id="main" class="layout"><aside class="rail" aria-label="Course chapters"><div class="rail-label">Course chapters</div>
+<a href="01-app-map.html"><span class="rail-number">01</span>Map the app before writing code</a>
+<a href="02-html-css.html" aria-current="page"><span class="rail-number">02</span>HTML, CSS, and the browser</a>
+<a href="03-js-data.html"><span class="rail-number">03</span>JavaScript values and data structures</a>
+<a href="04-js-logic.html"><span class="rail-number">04</span>Decisions, functions, and useful array methods</a>
+<a href="05-async-json.html"><span class="rail-number">05</span>Async JavaScript, HTTP, and JSON</a>
+<a href="06-react-components.html"><span class="rail-number">06</span>React components, JSX, props, and events</a>
+<a href="07-react-state.html"><span class="rail-number">07</span>React state, forms, and data-driven screens</a>
+<a href="08-python-fastapi.html"><span class="rail-number">08</span>Python refresh and FastAPI endpoints</a>
+<a href="09-sqlite.html"><span class="rail-number">09</span>SQL and SQLite: persistent records</a>
+<a href="10-tauri-rust.html"><span class="rail-number">10</span>Tauri, Rust, and the desktop boundary</a>
+<a href="11-capstone.html"><span class="rail-number">11</span>Capstone: build one complete feature</a></aside><div class="main">
+<div class="crumbs"><a href="index.html">Short chapter index</a> / Chapter 02</div>
+<header class="lesson-header"><div class="eyebrow">Chapter 02 · Foundations</div><h1>HTML, CSS, and the browser</h1><p class="lead">Before React, learn the browser’s basic materials: semantic markup, forms, and styles. React will still use these same browser elements.</p><div class="lesson-meta"><span>Estimated time: 35–50 min</span><span>Read, type, explain, practice</span></div></header>
+<div class="note-box short-version-note"><strong>Concise version.</strong> This preserves the earlier, shorter lesson. <a href="../chapters/02-html-css.html">Open the expanded Chapter 02 lesson</a> for the full walkthrough.</div>
+<section class="outcomes"><h2>By the end, you can…</h2><ul><li>Build a meaningful HTML page using headings, labels, inputs, buttons, and lists.</li><li>Explain selectors, the box model, and a responsive layout.</li><li>Recognize accessibility habits that matter in forms.</li></ul></section>
+<article class="lesson-content"><section id="section-1"><h2>HTML describes meaning and structure <a class="section-anchor" href="#section-1" aria-label="Link to HTML describes meaning and structure">¶</a></h2><p>An HTML element usually has an opening tag, content, and a closing tag. A browser parses elements into a document tree. Choose tags for meaning: <code>&lt;main&gt;</code> for primary content, <code>&lt;nav&gt;</code> for navigation, <code>&lt;form&gt;</code> for input, and <code>&lt;button&gt;</code> for an action.</p><pre><code>&lt;form&gt;
+  &lt;label for="task-title"&gt;Task title&lt;/label&gt;
+  &lt;input id="task-title" name="title" required&gt;
+  &lt;button type="submit"&gt;Save task&lt;/button&gt;
+&lt;/form&gt;</code></pre><p>The <code>for</code> value on a label matches the input’s <code>id</code>. This makes the label clickable and gives assistive technology a clear name for the field. A placeholder is not a replacement for a label.</p></section>
+<section id="section-2"><h2>CSS is a set of presentation rules <a class="section-anchor" href="#section-2" aria-label="Link to CSS is a set of presentation rules">¶</a></h2><p>CSS rules select elements and assign properties. A class is a reusable label; an ID should usually identify one unique element. The <strong>cascade</strong> decides which matching rule wins based on origin, importance, specificity, and order. Avoid solving every style conflict with increasingly specific selectors.</p><pre><code>.task-form {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 34rem;
+}
+
+.task-form input {
+  padding: 0.7rem;
+  border: 1px solid #9aabb4;
+  border-radius: 0.4rem;
+}</code></pre><p>The box model is content + padding + border + margin. Most projects set <code>box-sizing: border-box</code> so declared widths include padding and border. Use Flexbox for one-dimensional alignment and CSS Grid for rows and columns. Add responsive rules so controls remain usable on narrow screens.</p></section>
+<section id="section-3"><h2>What the browser does <a class="section-anchor" href="#section-3" aria-label="Link to What the browser does">¶</a></h2><p>The browser loads an HTML document, downloads linked CSS and JavaScript, builds the document and style trees, and paints pixels. When you click a button, the browser fires an event; JavaScript can respond. Developer Tools let you inspect the DOM, CSS rules, console errors, and network requests.</p><p>React does not replace HTML or the browser. JSX looks like markup, but it is JavaScript syntax that React turns into browser UI. Attributes like HTML <code>class</code> become React’s <code>className</code>; a React component returns markup-like JSX.</p><div class="mistake"><h2>Common mistake</h2><p>Do not use a clickable <code>&lt;div&gt;</code> when a button is the correct control. Native buttons support keyboard activation and communicate intent to assistive technology.</p></div></section>
+<section class="exercise" id="practice"><h2>Practice it</h2><p>Create a static page with a heading “Tasks,” a labeled title field, a priority select, a Save button, and a list with two example rows. Use semantic elements and style the form with a small amount of CSS.</p><details><summary><strong>Show answer guidance</strong></summary><div class="answer"><p>Check that every field has a visible label, the button is a real button, headings follow a sensible order, and the page remains readable when the viewport is narrow. Do not add React yet; this lesson is about browser fundamentals.</p></div></details></section>
+<section class="resource-list" id="references"><h2>References for deeper study</h2><p class="small muted">The lesson is self-contained; these are optional official or well-established references.</p><ul><li><a href="https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/Structuring_content" target="_blank" rel="noopener noreferrer">MDN: Structuring content with HTML <span aria-hidden="true">↗</span></a></li><li><a href="https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/Styling_basics" target="_blank" rel="noopener noreferrer">MDN: CSS first steps <span aria-hidden="true">↗</span></a></li><li><a href="https://developer.mozilla.org/en-US/docs/Learn_web_development/Extensions/Forms" target="_blank" rel="noopener noreferrer">MDN: HTML forms <span aria-hidden="true">↗</span></a></li></ul></section>
+</article>
+<button class="mark-complete" type="button" data-complete aria-pressed="false">Mark this chapter complete</button>
+<nav class="lesson-nav" aria-label="Previous and next chapters"><a href="01-app-map.html"><small>Previous chapter</small><strong>← Map the app before writing code</strong></a><a href="03-js-data.html"><small>Next chapter</small><strong>JavaScript values and data structures →</strong></a></nav>
+</div></main><footer class="footer"><a href="../index.html">App Builder’s Workshop</a> · Progress checkmarks stay in this browser.</footer><script src="../assets/site.js" defer></script></body></html>

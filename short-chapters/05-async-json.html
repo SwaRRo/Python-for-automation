@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A desktop interface often waits for a backend or database. Learn how JavaScript waits for that result without freezing the whole window."><title>05 — Async JavaScript, HTTP, and JSON · App Builder’s Workshop</title>
+<link rel="icon" href="../assets/course-mark.svg" type="image/svg+xml"><script>(()=>{let saved=null;try{saved=localStorage.getItem("app-workshop-theme");}catch{}const theme=saved==="dark"||saved==="light"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;})();</script><link rel="stylesheet" href="../assets/site.css"></head>
+<body data-track="short" data-chapter="05-async-json"><a class="skip-link" href="#main">Skip to lesson</a>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="../index.html"><img src="../assets/course-mark.svg" alt=""><span>App Builder’s Workshop</span></a><nav class="topnav" aria-label="Main navigation"><a href="index.html">All chapters</a><button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode: off</button><a class="nav-pill" href="11-capstone.html">Capstone</a></nav></div></header>
+<div class="reading-progress" aria-hidden="true"><span data-reading-progress></span></div>
+<main id="main" class="layout"><aside class="rail" aria-label="Course chapters"><div class="rail-label">Course chapters</div>
+<a href="01-app-map.html"><span class="rail-number">01</span>Map the app before writing code</a>
+<a href="02-html-css.html"><span class="rail-number">02</span>HTML, CSS, and the browser</a>
+<a href="03-js-data.html"><span class="rail-number">03</span>JavaScript values and data structures</a>
+<a href="04-js-logic.html"><span class="rail-number">04</span>Decisions, functions, and useful array methods</a>
+<a href="05-async-json.html" aria-current="page"><span class="rail-number">05</span>Async JavaScript, HTTP, and JSON</a>
+<a href="06-react-components.html"><span class="rail-number">06</span>React components, JSX, props, and events</a>
+<a href="07-react-state.html"><span class="rail-number">07</span>React state, forms, and data-driven screens</a>
+<a href="08-python-fastapi.html"><span class="rail-number">08</span>Python refresh and FastAPI endpoints</a>
+<a href="09-sqlite.html"><span class="rail-number">09</span>SQL and SQLite: persistent records</a>
+<a href="10-tauri-rust.html"><span class="rail-number">10</span>Tauri, Rust, and the desktop boundary</a>
+<a href="11-capstone.html"><span class="rail-number">11</span>Capstone: build one complete feature</a></aside><div class="main">
+<div class="crumbs"><a href="index.html">Short chapter index</a> / Chapter 05</div>
+<header class="lesson-header"><div class="eyebrow">Chapter 05 · Core skill</div><h1>Async JavaScript, HTTP, and JSON</h1><p class="lead">A desktop interface often waits for a backend or database. Learn how JavaScript waits for that result without freezing the whole window.</p><div class="lesson-meta"><span>Estimated time: 45–60 min</span><span>Read, type, explain, practice</span></div></header>
+<div class="note-box short-version-note"><strong>Concise version.</strong> This preserves the earlier, shorter lesson. <a href="../chapters/05-async-json.html">Open the expanded Chapter 05 lesson</a> for the full walkthrough.</div>
+<section class="outcomes"><h2>By the end, you can…</h2><ul><li>Explain a Promise as a future result.</li><li>Use async/await and handle network/HTTP errors.</li><li>Serialize request data and parse JSON responses.</li></ul></section>
+<article class="lesson-content"><section id="section-1"><h2>The Promise mental model <a class="section-anchor" href="#section-1" aria-label="Link to The Promise mental model">¶</a></h2><p>A network request takes an unpredictable amount of time. JavaScript starts the operation and keeps the event loop free to handle rendering and user input. A <strong>Promise</strong> is an object representing a value that may be available later—or a failure.</p><p>Mark the function <code>async</code> and use <code>await</code> to write the steps in a readable order:</p><pre><code>async function loadTasks() {
+  const response = await fetch("http://127.0.0.1:8000/tasks");
+  const tasks = await response.json();
+  return tasks;
+}</code></pre><p><code>await</code> pauses this asynchronous function at that line. It does not stop the entire application from responding. Think “wait here for this function’s result, while the rest of the UI can continue.”</p></section>
+<section id="section-2"><h2>HTTP and JSON are a boundary <a class="section-anchor" href="#section-2" aria-label="Link to HTTP and JSON are a boundary">¶</a></h2><p>HTTP sends a request to a URL with a method such as GET (read), POST (create), PUT/PATCH (change), or DELETE (remove). A request may include headers and a body. JSON is a common text format for request and response bodies.</p><pre><code>const newTask = { title: "Prepare report", done: false };
+const response = await fetch("http://127.0.0.1:8000/tasks", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(newTask),
+});</code></pre><p><code>JSON.stringify()</code> converts a JavaScript value into JSON text. On the response side, <code>await response.json()</code> reads and parses JSON text into a JavaScript object/array.</p></section>
+<section id="section-3"><h2>Check failures explicitly <a class="section-anchor" href="#section-3" aria-label="Link to Check failures explicitly">¶</a></h2><p><code>fetch</code> rejects for network errors, but an HTTP 404 or 500 still gives you a response object. Check <code>response.ok</code> before treating it as success. Use <code>try/catch</code> for failures and finally for cleanup.</p><pre><code>async function createTask(task) {
+  try {
+    const response = await fetch("http://127.0.0.1:8000/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(task),
+    });
+    if (!response.ok) {
+      throw new Error(`Save failed (${response.status})`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("Could not save task", error);
+    throw error;
+  }
+}</code></pre><p>Show the user a useful loading or error state. Never assume the network is always available.</p><div class="callout"><h2>Local development and CORS</h2><p>A browser treats different origins (scheme, host, port) as different security contexts. If a development UI and local FastAPI server use different ports, configure FastAPI CORS for the intended development origin. Bind a packaged local service to loopback, not every network interface, unless you have a carefully secured reason otherwise.</p></div></section>
+<section class="exercise" id="practice"><h2>Practice it</h2><p>Add a response.ok check and a try/catch to a small GET function. In words, explain the difference between a network failure and a response with HTTP status 500.</p><details><summary><strong>Show answer guidance</strong></summary><div class="answer"><p>A network failure may prevent fetch from producing a normal response; an HTTP 500 is a response whose server-side operation failed. Check response.ok for HTTP status, and use catch for rejected fetch/parsing/explicitly thrown errors.</p></div></details></section>
+<section class="resource-list" id="references"><h2>References for deeper study</h2><p class="small muted">The lesson is self-contained; these are optional official or well-established references.</p><ul><li><a href="https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch" target="_blank" rel="noopener noreferrer">MDN: Using Fetch <span aria-hidden="true">↗</span></a></li><li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise" target="_blank" rel="noopener noreferrer">MDN: Promise <span aria-hidden="true">↗</span></a></li><li><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON" target="_blank" rel="noopener noreferrer">MDN: JSON <span aria-hidden="true">↗</span></a></li></ul></section>
+</article>
+<button class="mark-complete" type="button" data-complete aria-pressed="false">Mark this chapter complete</button>
+<nav class="lesson-nav" aria-label="Previous and next chapters"><a href="04-js-logic.html"><small>Previous chapter</small><strong>← Decisions, functions, and useful array methods</strong></a><a href="06-react-components.html"><small>Next chapter</small><strong>React components, JSX, props, and events →</strong></a></nav>
+</div></main><footer class="footer"><a href="../index.html">App Builder’s Workshop</a> · Progress checkmarks stay in this browser.</footer><script src="../assets/site.js" defer></script></body></html>

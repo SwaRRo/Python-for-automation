@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A database stores structured facts beyond the lifetime of one process. Learn relational tables, keys, CRUD queries, and how to preserve history instead of overwriting it."><title>09 — SQL and SQLite: persistent records · App Builder’s Workshop</title>
+<link rel="icon" href="../assets/course-mark.svg" type="image/svg+xml"><script>(()=>{let saved=null;try{saved=localStorage.getItem("app-workshop-theme");}catch{}const theme=saved==="dark"||saved==="light"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;})();</script><link rel="stylesheet" href="../assets/site.css"></head>
+<body data-track="short" data-chapter="09-sqlite"><a class="skip-link" href="#main">Skip to lesson</a>
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="../index.html"><img src="../assets/course-mark.svg" alt=""><span>App Builder’s Workshop</span></a><nav class="topnav" aria-label="Main navigation"><a href="index.html">All chapters</a><button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark mode: off</button><a class="nav-pill" href="11-capstone.html">Capstone</a></nav></div></header>
+<div class="reading-progress" aria-hidden="true"><span data-reading-progress></span></div>
+<main id="main" class="layout"><aside class="rail" aria-label="Course chapters"><div class="rail-label">Course chapters</div>
+<a href="01-app-map.html"><span class="rail-number">01</span>Map the app before writing code</a>
+<a href="02-html-css.html"><span class="rail-number">02</span>HTML, CSS, and the browser</a>
+<a href="03-js-data.html"><span class="rail-number">03</span>JavaScript values and data structures</a>
+<a href="04-js-logic.html"><span class="rail-number">04</span>Decisions, functions, and useful array methods</a>
+<a href="05-async-json.html"><span class="rail-number">05</span>Async JavaScript, HTTP, and JSON</a>
+<a href="06-react-components.html"><span class="rail-number">06</span>React components, JSX, props, and events</a>
+<a href="07-react-state.html"><span class="rail-number">07</span>React state, forms, and data-driven screens</a>
+<a href="08-python-fastapi.html"><span class="rail-number">08</span>Python refresh and FastAPI endpoints</a>
+<a href="09-sqlite.html" aria-current="page"><span class="rail-number">09</span>SQL and SQLite: persistent records</a>
+<a href="10-tauri-rust.html"><span class="rail-number">10</span>Tauri, Rust, and the desktop boundary</a>
+<a href="11-capstone.html"><span class="rail-number">11</span>Capstone: build one complete feature</a></aside><div class="main">
+<div class="crumbs"><a href="index.html">Short chapter index</a> / Chapter 09</div>
+<header class="lesson-header"><div class="eyebrow">Chapter 09 · Data foundation</div><h1>SQL and SQLite: persistent records</h1><p class="lead">A database stores structured facts beyond the lifetime of one process. Learn relational tables, keys, CRUD queries, and how to preserve history instead of overwriting it.</p><div class="lesson-meta"><span>Estimated time: 50–70 min</span><span>Read, type, explain, practice</span></div></header>
+<div class="note-box short-version-note"><strong>Concise version.</strong> This preserves the earlier, shorter lesson. <a href="../chapters/09-sqlite.html">Open the expanded Chapter 09 lesson</a> for the full walkthrough.</div>
+<section class="outcomes"><h2>By the end, you can…</h2><ul><li>Explain tables, rows, columns, primary keys, and foreign keys.</li><li>Write basic SELECT, INSERT, UPDATE, and DELETE statements.</li><li>Use parameterized queries and transactions from application code.</li></ul></section>
+<article class="lesson-content"><section id="section-1"><h2>Model entities and relationships <a class="section-anchor" href="#section-1" aria-label="Link to Model entities and relationships">¶</a></h2><p>A table represents one type of thing; each row is one record and each column is a field. A primary key uniquely identifies a row. A foreign key connects a row to another table. Relational design avoids storing the same changing fact in many places.</p><pre><code>CREATE TABLE tasks (
+  id INTEGER PRIMARY KEY,
+  title TEXT NOT NULL,
+  done INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE task_events (
+  id INTEGER PRIMARY KEY,
+  task_id INTEGER NOT NULL REFERENCES tasks(id),
+  event_type TEXT NOT NULL,
+  happened_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);</code></pre><p>The second table records events connected to a task. It is often better to preserve a history record than overwrite information when auditability matters.</p></section>
+<section id="section-2"><h2>The four CRUD operations <a class="section-anchor" href="#section-2" aria-label="Link to The four CRUD operations">¶</a></h2><p>SQL names the operation and the table. Use an explicit column list for inserts.</p><pre><code>-- Read
+SELECT id, title, done FROM tasks ORDER BY id DESC;
+
+-- Create
+INSERT INTO tasks (title) VALUES ('Prepare report');
+
+-- Update
+UPDATE tasks SET done = 1 WHERE id = 7;
+
+-- Delete
+DELETE FROM tasks WHERE id = 7;</code></pre><p>Always check that an update/delete has a suitable condition. Without <code>WHERE</code>, you may change every row. SQLite is embedded and stores data in a file, but concurrent access, migrations, backups, and app lifecycle still deserve thought.</p></section>
+<section id="section-3"><h2>Pass data safely and group related writes <a class="section-anchor" href="#section-3" aria-label="Link to Pass data safely and group related writes">¶</a></h2><p>Do not build SQL by joining untrusted text into a string. Use parameterized statements so the database treats values as data.</p><pre><code>cursor.execute(
+    "INSERT INTO tasks (title) VALUES (?)",
+    (title,)
+)</code></pre><p>Use a transaction when several writes must succeed or fail together. For example, create a task and insert its first history event in one transaction. Otherwise you could end with a task that has no matching event.</p><p>Enable foreign-key enforcement where your SQLite connection requires it, create schema migrations as the application evolves, and decide where the database file lives. A packaged Tauri app should use the app’s data directory, not assume its current working directory is writable.</p><div class="note-box"><strong>Useful mental model:</strong> a database is durable shared state for your application, not a magic file that automatically validates every business rule.</div></section>
+<section class="exercise" id="practice"><h2>Practice it</h2><p>Design a tiny notes database with notes and note_tags. Identify each primary key and foreign key. Write a SELECT query that lists a note’s title and its tags. Then write a parameterized INSERT example in the language you plan to use.</p><details><summary><strong>Show answer guidance</strong></summary><div class="answer"><p>A note_tags table can contain note_id and tag_id as foreign keys; a composite uniqueness rule can prevent duplicate links. For a learning project, start with one table and a primary key before modeling many-to-many relationships. The important habit is to keep parameter values separate from SQL text.</p></div></details></section>
+<section class="resource-list" id="references"><h2>References for deeper study</h2><p class="small muted">The lesson is self-contained; these are optional official or well-established references.</p><ul><li><a href="https://www.sqlite.org/docs.html" target="_blank" rel="noopener noreferrer">SQLite documentation <span aria-hidden="true">↗</span></a></li><li><a href="https://www.sqlite.org/whentouse.html" target="_blank" rel="noopener noreferrer">SQLite: Appropriate Uses <span aria-hidden="true">↗</span></a></li><li><a href="https://sqlbolt.com/" target="_blank" rel="noopener noreferrer">SQLBolt interactive lessons <span aria-hidden="true">↗</span></a></li></ul></section>
+</article>
+<button class="mark-complete" type="button" data-complete aria-pressed="false">Mark this chapter complete</button>
+<nav class="lesson-nav" aria-label="Previous and next chapters"><a href="08-python-fastapi.html"><small>Previous chapter</small><strong>← Python refresh and FastAPI endpoints</strong></a><a href="10-tauri-rust.html"><small>Next chapter</small><strong>Tauri, Rust, and the desktop boundary →</strong></a></nav>
+</div></main><footer class="footer"><a href="../index.html">App Builder’s Workshop</a> · Progress checkmarks stay in this browser.</footer><script src="../assets/site.js" defer></script></body></html>
